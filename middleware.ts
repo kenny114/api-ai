@@ -22,7 +22,8 @@ export async function middleware(request: NextRequest) {
   if (
     pathname === '/dashboard' || pathname.startsWith('/dashboard/') ||
     pathname === '/api-keys'  || pathname.startsWith('/api-keys/')  ||
-    pathname === '/usage'     || pathname.startsWith('/usage/')
+    pathname === '/usage'     || pathname.startsWith('/usage/')     ||
+    pathname === '/team'      || pathname.startsWith('/team/')
   ) {
     if (!request.cookies.get('dash_session')) {
       return NextResponse.redirect(new URL('/login', request.url))
@@ -138,5 +139,6 @@ export const config = {
     '/dashboard/:path*',
     '/api-keys/:path*',
     '/usage/:path*',
+    '/team/:path*',
   ],
 }

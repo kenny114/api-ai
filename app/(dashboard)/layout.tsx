@@ -8,6 +8,7 @@ const NAV = [
   { href: '/api-keys',  label: 'API Keys'  },
   { href: '/docs',      label: 'Docs'      },
   { href: '/usage',     label: 'Usage'     },
+  { href: '/team',      label: 'Team'      },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
