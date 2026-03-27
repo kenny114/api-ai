@@ -157,7 +157,7 @@ export default function DocsPage() {
                   {[
                     ['401', 'MISSING_API_KEY',  'No x-api-key header provided'],
                     ['401', 'INVALID_API_KEY',  'Key not found in database'],
-                    ['429', 'LIMIT_EXCEEDED',   'Monthly request limit reached'],
+                    ['429', 'LIMIT_EXCEEDED',   'Request limit reached for this key'],
                     ['400', 'VALIDATION_ERROR', 'Request body failed validation'],
                     ['503', 'AUTH_ERROR',        'Supabase is unreachable'],
                   ].map(([status, code, meaning]) => (
@@ -179,32 +179,32 @@ export default function DocsPage() {
               id="leads-find"
               method="POST"
               path="/api/v1/leads/find"
-              description="Scrape and return matching lead profiles from a given platform and niche."
+              description="Scrape business listings from Google Maps for a given area or niche. Returns saved lead records."
               request={`{
-  "platform": "instagram",   // instagram | twitter | linkedin | google_maps
-  "niche": "fitness coaches",
-  "limit": 10,               // max profiles to return
+  "area": "coffee shops London",  // search query passed to Google Maps
+  "limit": 10,                    // 1–50, default 20
   "filters": {
-    "min_followers": 5000,
-    "max_followers": 100000,
-    "location": "US"
+    "no_website": true            // if true, only return businesses without a website
   }
 }`}
               response={`{
+  "status": "success",
+  "leads_found": 3,
   "leads": [
     {
       "id": "a1b2c3d4-...",
-      "username": "johnfitness",
-      "name": "John Smith",
-      "profile_url": "https://instagram.com/johnfitness",
-      "bio": "Online coach. Helping 500+ clients...",
-      "followers": 24800,
-      "platform": "instagram",
-      "niche": "fitness coaches"
+      "name": "Hideaway Coffee House",
+      "username": "hideaway_coffee_house",
+      "profile_url": "https://hideawaycoffee.com",
+      "platform": "google_maps",
+      "metadata": {
+        "email": null,
+        "area": "coffee shops London",
+        "source": "google_maps"
+      },
+      "created_at": "2024-03-15T14:23:01Z"
     }
-  ],
-  "count": 10,
-  "credits_used": 1
+  ]
 }`}
             />
           </section>
@@ -215,13 +215,15 @@ export default function DocsPage() {
             path="/api/v1/messages/generate"
             description="Generate a personalised outreach message for a lead using AI."
             request={`{
-  "lead_id": "a1b2c3d4-...",
-  "campaign_type": "promotion",
-  "tone": "friendly"         // professional | casual | friendly | direct
+  "lead_id": "a1b2c3d4-...",             // required — UUID from leads/find
+  "template": "cold_outreach",           // cold_outreach | follow_up | partnership | custom
+  "campaign_type": "promotion",          // optional — describe the campaign
+  "tone": "friendly",                    // professional | casual | friendly | direct
+  "custom_prompt": "Mention their menu"  // optional — extra instructions for AI
 }`}
             response={`{
   "message_id": "e5f6g7h8-...",
-  "message_text": "Hey John! Loved your recent content...",
+  "message_text": "Hey Hideaway Coffee House! Your cozy vibe...",
   "status": "draft"
 }`}
           />
@@ -251,11 +253,11 @@ export default function DocsPage() {
             description="Store encrypted platform credentials (session tokens) for a key. Required before sending messages."
             request={`{
   "platform": "instagram",   // instagram | twitter | linkedin
-  "token": "your-session-token"
+  "value": "your-session-token"
 }`}
             response={`{
-  "ok": true,
-  "platform": "instagram"
+  "platform": "instagram",
+  "status": "saved"
 }`}
           />
 
@@ -265,17 +267,17 @@ export default function DocsPage() {
             <p className="text-zinc-400 text-sm mb-5">
               Three API calls to go from zero to sent DM.
             </p>
-            <Code>{`# 1. Find leads
+            <Code>{`# 1. Find leads (Google Maps)
 curl -X POST https://your-app.vercel.app/api/v1/leads/find \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"platform":"instagram","niche":"fitness coaches","limit":5}'
+  -d '{"area":"coffee shops London","limit":5}'
 
 # 2. Generate a message (use lead_id from step 1)
 curl -X POST https://your-app.vercel.app/api/v1/messages/generate \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"lead_id":"<id>","campaign_type":"promotion","tone":"friendly"}'
+  -d '{"lead_id":"<id>","template":"cold_outreach","tone":"friendly"}'
 
 # 3. Send it (use message_id from step 2)
 curl -X POST https://your-app.vercel.app/api/v1/messages/send \\
