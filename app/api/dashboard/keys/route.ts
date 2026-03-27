@@ -12,15 +12,16 @@ export async function GET() {
     .order('created_at', { ascending: false })
 
   if (error) {
+    console.error('[dashboard/keys GET] Supabase error:', error.message, error.code)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const keys = data.map(k => ({
+  const keys = (data ?? []).map(k => ({
     id: k.id,
     name: k.name,
-    key_display: `${k.key.slice(0, 12)}...${k.key.slice(-4)}`,
-    requests_used: k.requests_used,
-    requests_limit: k.requests_limit,
+    key_display: k.key ? `${k.key.slice(0, 12)}...${k.key.slice(-4)}` : 'sk_live_...',
+    requests_used: k.requests_used ?? 0,
+    requests_limit: k.requests_limit ?? 1000,
     is_active: k.is_active,
     created_at: k.created_at,
     last_used_at: k.last_used_at,
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error) {
+    console.error('[dashboard/keys POST] Supabase error:', error.message, error.code)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 

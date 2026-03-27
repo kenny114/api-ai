@@ -14,16 +14,27 @@ type ApiKey = {
 }
 
 export default function ApiKeysPage() {
-  const [keys, setKeys]     = useState<ApiKey[]>([])
+  const [keys, setKeys]       = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
-  const [newKey, setNewKey] = useState<string | null>(null)
-  const [form, setForm]     = useState({ name: '', requests_limit: '1000' })
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [newKey, setNewKey]   = useState<string | null>(null)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [form, setForm]       = useState({ name: '', requests_limit: '1000' })
   const [creating, setCreating] = useState(false)
 
   async function load() {
-    const res  = await fetch('/api/dashboard/keys')
+    const res = await fetch('/api/dashboard/keys')
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      const msg = body.error ?? `Server error (${res.status})`
+      console.error('[api-keys] load failed:', msg)
+      setLoadError(msg)
+      setLoading(false)
+      return   // do NOT clear existing keys — keep whatever was there
+    }
     const data = await res.json()
     setKeys(data.keys ?? [])
+    setLoadError(null)
     setLoading(false)
   }
 
@@ -31,6 +42,7 @@ export default function ApiKeysPage() {
 
   async function create() {
     setCreating(true)
+    setCreateError(null)
     const res = await fetch('/api/dashboard/keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -43,19 +55,21 @@ export default function ApiKeysPage() {
     if (res.ok) {
       setNewKey(data.key)
       setForm({ name: '', requests_limit: '1000' })
-      load()
+      await load()
+    } else {
+      setCreateError(data.error ?? 'Failed to create key')
     }
     setCreating(false)
   }
 
   async function revoke(id: string) {
     if (!confirm('Revoke this key? Any integrations using it will stop working immediately.')) return
-    await fetch('/api/dashboard/keys', {
+    const res = await fetch('/api/dashboard/keys', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    load()
+    if (res.ok) await load()
   }
 
   const pct = (used: number, limit: number) =>
@@ -99,6 +113,9 @@ export default function ApiKeysPage() {
             {creating ? 'Creating…' : 'Create key'}
           </button>
         </div>
+        {createError && (
+          <p className="mt-3 text-xs text-red-400">{createError}</p>
+        )}
       </div>
 
       {/* New key reveal */}
@@ -114,6 +131,22 @@ export default function ApiKeysPage() {
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Load error */}
+      {loadError && (
+        <div className="border border-red-900/40 rounded-xl p-4 bg-red-950/20 mb-6 flex items-start gap-3">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400 flex-shrink-0 mt-0.5">
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+          </svg>
+          <div>
+            <p className="text-red-400 text-sm font-medium">Failed to load API keys</p>
+            <p className="text-red-500/70 text-xs mt-0.5">{loadError}</p>
+            <button onClick={load} className="text-xs text-zinc-500 hover:text-white mt-2 transition-colors">
+              Try again
+            </button>
+          </div>
         </div>
       )}
 
@@ -136,7 +169,7 @@ export default function ApiKeysPage() {
                   Loading…
                 </td>
               </tr>
-            ) : keys.length === 0 ? (
+            ) : !loadError && keys.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-zinc-600 text-sm">
                   No API keys yet — create one above.
