@@ -28,10 +28,10 @@ function Nav() {
           Lead<span className="text-violet-400">API</span>
         </span>
         <div className="flex items-center gap-6 text-sm text-zinc-400">
-          <a href="#endpoints" className="hover:text-white transition-colors">Docs</a>
+          <a href="/docs" className="hover:text-white transition-colors">Docs</a>
           <a href="#features" className="hover:text-white transition-colors">Features</a>
           <a
-            href="#get-started"
+            href="/dashboard"
             className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-md font-medium transition-colors"
           >
             Get API Key
@@ -66,7 +66,7 @@ function Hero() {
             Start for free
           </a>
           <a
-            href="#endpoints"
+            href="/docs"
             className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white px-6 py-3 rounded-lg font-semibold transition-colors"
           >
             View docs

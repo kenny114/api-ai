@@ -17,10 +17,32 @@ const sbHeaders = {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // /api/v1/keys uses its own ADMIN_SECRET auth — skip API key check
+  // ── Dashboard page auth ─────────────────────────────────────────────────
+  // Protect /dashboard, /api-keys, /usage — redirect to /login if no session
+  if (
+    pathname === '/dashboard' || pathname.startsWith('/dashboard/') ||
+    pathname === '/api-keys'  || pathname.startsWith('/api-keys/')  ||
+    pathname === '/usage'     || pathname.startsWith('/usage/')
+  ) {
+    if (!request.cookies.get('dash_session')) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+    return NextResponse.next()
+  }
+
+  // ── Dashboard API auth ──────────────────────────────────────────────────
+  // Protect /api/dashboard/* — 401 if no session cookie
+  if (pathname.startsWith('/api/dashboard/')) {
+    if (!request.cookies.get('dash_session')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    return NextResponse.next()
+  }
+
+  // ── API v1: key management uses ADMIN_SECRET — skip API key check ───────
   if (pathname === '/api/v1/keys') return NextResponse.next()
 
-  // 1. Require the header
+  // ── API v1: require x-api-key header ────────────────────────────────────
   const apiKey = request.headers.get('x-api-key')
   if (!apiKey) {
     return NextResponse.json(
@@ -29,7 +51,7 @@ export async function middleware(request: NextRequest) {
     )
   }
 
-  // 2. Look up the key in api_keys
+  // Look up the key in api_keys
   let keyRecord: { id: string; requests_used: number; requests_limit: number } | null = null
   try {
     const res = await fetch(
@@ -58,7 +80,6 @@ export async function middleware(request: NextRequest) {
     )
   }
 
-  // 3. Reject invalid keys
   if (!keyRecord) {
     return NextResponse.json(
       { error: 'Invalid API key', code: 'INVALID_API_KEY' },
@@ -66,7 +87,6 @@ export async function middleware(request: NextRequest) {
     )
   }
 
-  // 4. Reject over-limit keys
   if (keyRecord.requests_used >= keyRecord.requests_limit) {
     return NextResponse.json(
       {
@@ -79,8 +99,6 @@ export async function middleware(request: NextRequest) {
     )
   }
 
-  // 5. Increment requests_used and write usage_log in parallel
-  //    Both are fire-and-continue — a failure here is logged but never blocks the caller.
   const newUsed = keyRecord.requests_used + 1
 
   Promise.all([
@@ -105,7 +123,6 @@ export async function middleware(request: NextRequest) {
     ),
   ]).catch(err => console.error('Usage tracking error:', err))
 
-  // 6. Forward the validated key ID to route handlers via internal header
   const forwarded = new Headers(request.headers)
   forwarded.set('x-api-key-id',    keyRecord.id)
   forwarded.set('x-api-key-used',  String(newUsed))
@@ -115,5 +132,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/api/v1/:path*',
+  matcher: [
+    '/api/v1/:path*',
+    '/api/dashboard/:path*',
+    '/dashboard/:path*',
+    '/api-keys/:path*',
+    '/usage/:path*',
+  ],
 }
