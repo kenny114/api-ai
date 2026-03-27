@@ -1,4 +1,4 @@
-import type { Browser, Page, Protocol } from 'puppeteer-core'
+import type { Browser, Page } from 'puppeteer-core'
 import type { Platform } from '@/types'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { decrypt } from '@/lib/encrypt'
@@ -97,9 +97,16 @@ export async function injectSessionCookies(
   platform: Platform,
   apiKeyId?: string
 ): Promise<void> {
-  type CookieDef = Omit<Protocol.Network.CookieParam, 'name' | 'value'> & {
+  type CookieDef = {
     name: string
     value: string
+    domain?: string
+    path?: string
+    httpOnly?: boolean
+    secure?: boolean
+    sameSite?: 'Strict' | 'Lax' | 'None'
+    expires?: number
+    url?: string
   }
 
   // DevTools copies cookie values URL-encoded (%3A etc.) — decode to raw value
