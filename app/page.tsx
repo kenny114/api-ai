@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import React from 'react'
 
 export const metadata: Metadata = {
   title: 'LeadAPI — Automated Outreach at Scale',
@@ -265,51 +266,86 @@ curl -X POST https://your-app.vercel.app/api/v1/messages/send \\
   )
 }
 
+const FEATURE_ICONS: Record<string, React.ReactNode> = {
+  key: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3"/>
+    </svg>
+  ),
+  chart: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-8"/>
+    </svg>
+  ),
+  shield: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  ),
+  sparkle: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v3m0 12v3M3 12h3m12 0h3m-3.3-6.7-2.1 2.1M9.4 14.6l-2.1 2.1m0-11.4 2.1 2.1m5.2 5.2 2.1 2.1"/>
+    </svg>
+  ),
+  layers: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+    </svg>
+  ),
+  database: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/>
+    </svg>
+  ),
+}
+
 function Features() {
   const items = [
     {
-      icon: '⚡',
+      icon: 'key',
       title: 'API key auth',
-      desc: 'Every request validated via x-api-key header. Keys are SHA-256 hashed at rest.',
+      desc: 'Every request validated via x-api-key header. Keys are hashed at rest — never stored plain.',
     },
     {
-      icon: '📊',
+      icon: 'chart',
       title: 'Usage tracking',
-      desc: 'Every request is logged with endpoint, duration, and status. Query your logs any time.',
+      desc: 'Every request is logged with endpoint and timestamp. Query your full history any time.',
     },
     {
-      icon: '🚦',
+      icon: 'shield',
       title: 'Rate limiting',
-      desc: 'Configurable per-key monthly limits. Automatic 429 responses when exceeded.',
+      desc: 'Configurable per-key request limits. Automatic 429 responses when exceeded.',
     },
     {
-      icon: '🤖',
+      icon: 'sparkle',
       title: 'AI generation',
-      desc: 'GPT-4o-mini by default. Swap to any OpenAI model or local LLM via env var.',
+      desc: 'GPT-4o-mini by default. Swap to any OpenAI model via env var.',
     },
     {
-      icon: '🌐',
+      icon: 'layers',
       title: 'Multi-platform',
-      desc: 'Instagram, Twitter/X, and LinkedIn supported out of the box.',
+      desc: 'Instagram, Twitter/X, LinkedIn, and Google Maps supported out of the box.',
     },
     {
-      icon: '🗄️',
-      title: 'Supabase backend',
-      desc: 'All leads, messages, and logs stored in Postgres. Full history, no black boxes.',
+      icon: 'database',
+      title: 'Postgres backend',
+      desc: 'All leads, messages, and logs stored in Supabase. Full history, no black boxes.',
     },
   ]
 
   return (
     <section id="features" className="py-20 px-6 border-t border-zinc-800">
       <div className="mx-auto max-w-6xl">
-        <h2 className="text-3xl font-bold text-white text-center mb-16">Everything included</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <h2 className="text-3xl font-bold text-white text-center mb-16">What you get</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {items.map(item => (
             <div
               key={item.title}
-              className="border border-zinc-800 rounded-xl p-6 bg-zinc-900/30 hover:border-zinc-700 transition-colors"
+              className="border border-zinc-800 rounded-xl p-6 bg-zinc-900/20 hover:border-zinc-700 transition-colors"
             >
-              <div className="text-2xl mb-3">{item.icon}</div>
+              <div className="w-8 h-8 rounded-md bg-violet-950/60 border border-violet-900/40 flex items-center justify-center text-violet-400 mb-4">
+                {FEATURE_ICONS[item.icon]}
+              </div>
               <h3 className="text-white font-semibold mb-2">{item.title}</h3>
               <p className="text-zinc-400 text-sm leading-relaxed">{item.desc}</p>
             </div>
@@ -323,33 +359,68 @@ function Features() {
 function GetStarted() {
   return (
     <section id="get-started" className="py-20 px-6 border-t border-zinc-800">
-      <div className="mx-auto max-w-2xl text-center">
-        <h2 className="text-3xl font-bold text-white mb-4">Ready to start?</h2>
-        <p className="text-zinc-400 mb-8 leading-relaxed">
-          Deploy this project to Vercel, add your Supabase and OpenAI keys, run the
-          SQL schema, and generate your first API key. You&apos;re live in minutes.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left text-sm mb-10">
-          {[
-            { n: '1', t: 'Deploy to Vercel', s: 'Click Deploy, add env vars' },
-            { n: '2', t: 'Run SQL schema', s: 'Paste supabase/schema.sql in Supabase' },
-            { n: '3', t: 'Create API key', s: 'Insert a row into api_keys table' },
-          ].map(s => (
-            <div key={s.n} className="border border-zinc-800 rounded-lg p-4 bg-zinc-900/30">
-              <div className="text-violet-400 font-bold text-lg mb-1">{s.n}</div>
-              <div className="text-white font-medium mb-1">{s.t}</div>
-              <div className="text-zinc-500 text-xs">{s.s}</div>
+      <div className="mx-auto max-w-5xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          {/* Left — CTA */}
+          <div>
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Start building in minutes
+            </h2>
+            <p className="text-zinc-400 leading-relaxed mb-8">
+              Get an API key from the dashboard, add it to your request header,
+              and you&apos;re finding leads and sending messages immediately — no scraping
+              code, no browser automation, no setup.
+            </p>
+            <div className="flex items-center gap-4">
+              <a
+                href="/dashboard"
+                className="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                Get your API key
+              </a>
+              <a
+                href="/docs"
+                className="text-zinc-400 hover:text-white text-sm transition-colors"
+              >
+                View docs →
+              </a>
             </div>
-          ))}
+          </div>
+
+          {/* Right — simple steps */}
+          <div className="space-y-3">
+            {[
+              {
+                n: '1',
+                t: 'Get an API key',
+                s: 'Create one in the dashboard — takes 10 seconds.',
+              },
+              {
+                n: '2',
+                t: 'Add it to your header',
+                s: 'x-api-key: sk_live_YOUR_KEY on every request.',
+              },
+              {
+                n: '3',
+                t: 'Make your first call',
+                s: 'POST /api/v1/leads/find with a platform and niche.',
+              },
+            ].map(step => (
+              <div
+                key={step.n}
+                className="flex items-start gap-4 border border-zinc-800 rounded-xl p-4 bg-zinc-900/20"
+              >
+                <div className="w-7 h-7 rounded-full bg-violet-600/20 border border-violet-700/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-violet-400 text-xs font-bold">{step.n}</span>
+                </div>
+                <div>
+                  <div className="text-white text-sm font-medium mb-0.5">{step.t}</div>
+                  <div className="text-zinc-500 text-xs">{step.s}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <Code>{`-- Create your first API key in Supabase
-INSERT INTO api_keys (key_hash, key_prefix, name, usage_limit)
-VALUES (
-  encode(digest('sk_live_YOUR_KEY_HERE', 'sha256'), 'hex'),
-  'sk_live_',
-  'My first key',
-  1000
-);`}</Code>
       </div>
     </section>
   )
