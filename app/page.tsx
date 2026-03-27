@@ -48,7 +48,7 @@ function Hero() {
     <section className="pt-36 pb-20 px-6 text-center">
       <div className="mx-auto max-w-3xl">
         <span className="inline-block bg-violet-900/40 text-violet-300 text-xs font-medium px-3 py-1 rounded-full border border-violet-800 mb-6">
-          REST API · No scraping code required
+          The go-to API for building business systems
         </span>
         <h1 className="text-5xl font-bold tracking-tight text-white mb-6 leading-tight">
           Automate your outreach
@@ -56,8 +56,8 @@ function Hero() {
           <span className="text-violet-400">end to end</span>
         </h1>
         <p className="text-zinc-400 text-lg mb-10 max-w-xl mx-auto leading-relaxed">
-          Find leads on Instagram, Twitter, and LinkedIn. Generate personalised messages
-          with AI. Send them automatically — all through three simple API calls.
+          Find leads across platforms, generate personalised messages with AI,
+          and send them automatically — all via a simple REST API built for scale.
         </p>
         <div className="flex items-center justify-center gap-4">
           <a
