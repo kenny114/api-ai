@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient, logUsage } from '@/lib/supabase-admin'
-import { analyzeSocialProfiles, type SocialPlatform } from '@/lib/social-analyze'
-import { closeBrowser } from '@/lib/browser'
+import { analyzeSocialProfiles, closeSocialBrowser, type SocialPlatform } from '@/lib/social-analyze'
 
 export const runtime = 'nodejs'
 
@@ -62,7 +61,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   } finally {
-    await closeBrowser()
+    await closeSocialBrowser()
   }
 
   const existingMeta = (lead.metadata as Record<string, unknown>) ?? {}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient, logUsage } from '@/lib/supabase-admin'
 import { enrichOsint, type OsintResult } from '@/lib/osint'
-import { analyzeSocialProfiles, type SocialAnalysisResult } from '@/lib/social-analyze'
+import { analyzeSocialProfiles, closeSocialBrowser, type SocialAnalysisResult } from '@/lib/social-analyze'
 import { analyzeWebsite, type WebsiteAnalysisResult } from '@/lib/website-analyze'
 import { closeBrowser } from '@/lib/browser'
 import OpenAI from 'openai'
@@ -60,24 +60,44 @@ export async function POST(request: NextRequest) {
   const resolvedWebsiteUrl = website_url ?? (lead.profile_url as string | null)
 
   try {
-    // Run all three scrapers — they share the same remote browser connection
-    const [osintResult, socialResult, websiteResult] = await Promise.allSettled([
-      resolvedDomain
-        ? enrichOsint({ domain: resolvedDomain, companyName: resolvedCompany })
-        : Promise.resolve(null),
-      analyzeSocialProfiles({
+    // Step 1: theHarvester — OSINT enrichment (emails, subdomains, employees)
+    let osintData: OsintResult | null = null
+    if (resolvedDomain) {
+      try {
+        osintData = await enrichOsint({ domain: resolvedDomain, companyName: resolvedCompany })
+      } catch (err) {
+        console.warn('OSINT step failed:', err instanceof Error ? err.message : err)
+      }
+    }
+
+    // Rate-limit between integrations
+    await new Promise(r => setTimeout(r, 1_000))
+
+    // Step 2: Playwright — social profile analysis
+    let socialData: SocialAnalysisResult = {}
+    try {
+      socialData = await analyzeSocialProfiles({
         lead: lead as Record<string, unknown>,
         socialUrls: social_urls,
-      }),
-      resolvedWebsiteUrl ? analyzeWebsite(resolvedWebsiteUrl) : Promise.resolve(null),
-    ])
+      }) ?? {}
+    } catch (err) {
+      console.warn('Social analysis step failed:', err instanceof Error ? err.message : err)
+    } finally {
+      await closeSocialBrowser()
+    }
 
-    const osintData: OsintResult | null =
-      osintResult.status === 'fulfilled' ? osintResult.value : null
-    const socialData: SocialAnalysisResult =
-      socialResult.status === 'fulfilled' ? (socialResult.value ?? {}) : {}
-    const websiteData: WebsiteAnalysisResult | null =
-      websiteResult.status === 'fulfilled' ? websiteResult.value : null
+    // Rate-limit between integrations
+    await new Promise(r => setTimeout(r, 1_000))
+
+    // Step 3: Puppeteer — website intelligence
+    let websiteData: WebsiteAnalysisResult | null = null
+    if (resolvedWebsiteUrl) {
+      try {
+        websiteData = await analyzeWebsite(resolvedWebsiteUrl)
+      } catch (err) {
+        console.warn('Website analysis step failed:', err instanceof Error ? err.message : err)
+      }
+    }
 
     // Deduplicate emails across OSINT + website sources
     const allEmails = [...new Set([

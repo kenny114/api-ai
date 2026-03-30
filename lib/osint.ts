@@ -1,6 +1,13 @@
-import { newPage } from './browser'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import * as fs from 'fs/promises'
+import * as os from 'os'
+import * as path from 'path'
+
+const execFileAsync = promisify(execFile)
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/
+const SPAM_EMAIL_PREFIXES = /noreply|no-reply|bounce|mailer-daemon|postmaster|webmaster|sentry|loaderio/
 
 export interface OsintResult {
   emails: string[]
@@ -9,153 +16,165 @@ export interface OsintResult {
   tech_stack: string[]
 }
 
+interface HarvesterJson {
+  emails?: string[]
+  hosts?: string[] | Array<{ hostname: string; ip: string }>
+  linkedin_people?: string[]
+  people?: string[]
+  cmd?: string
+}
+
 export async function enrichOsint(params: {
   domain: string
   companyName: string
 }): Promise<OsintResult> {
   const { domain } = params
 
-  const [subdomains, websiteData] = await Promise.all([
-    getSubdomains(domain),
-    scrapeWebsiteForContacts(domain),
+  // Run theHarvester sources in parallel with rate-limit delay between calls
+  const [bingResult, duckResult, crtResult] = await Promise.allSettled([
+    runHarvester(domain, 'bing', 50),
+    runHarvester(domain, 'duckduckgo', 50),
+    runHarvester(domain, 'crtsh', 100),
   ])
 
-  return {
-    emails: websiteData.emails,
-    employees: websiteData.employees,
-    subdomains,
-    tech_stack: websiteData.tech_stack,
+  const results: HarvesterJson[] = []
+  for (const r of [bingResult, duckResult, crtResult]) {
+    if (r.status === 'fulfilled' && r.value) results.push(r.value)
   }
-}
 
-async function getSubdomains(domain: string): Promise<string[]> {
-  try {
-    const res = await fetch(`https://crt.sh/?q=%.${domain}&output=json`, {
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!res.ok) return []
-    const data = (await res.json()) as Array<{ name_value: string }>
-    const seen = new Set<string>()
-    return data
-      .flatMap(e => e.name_value.split('\n'))
-      .map(s => s.trim().toLowerCase())
-      .filter(s => s.endsWith(`.${domain}`) && !s.includes('*'))
-      .filter(s => !seen.has(s) && !!seen.add(s))
-      .slice(0, 20)
-  } catch {
-    return []
+  // Merge emails
+  const emailSet = new Set<string>()
+  for (const r of results) {
+    for (const e of r.emails ?? []) {
+      const clean = e.toLowerCase().trim()
+      if (isValidEmail(clean)) emailSet.add(clean)
+    }
   }
-}
 
-async function scrapeWebsiteForContacts(domain: string): Promise<{
-  emails: string[]
-  employees: string[]
-  tech_stack: string[]
-}> {
-  const page = await newPage()
-  const emails = new Set<string>()
-  const employees = new Set<string>()
-  let tech_stack: string[] = []
-
-  const pagesToVisit = [
-    `https://${domain}`,
-    `https://${domain}/contact`,
-    `https://${domain}/about`,
-    `https://${domain}/team`,
-  ]
-
-  try {
-    for (const url of pagesToVisit) {
-      try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15_000 })
-        await new Promise(r => setTimeout(r, 500))
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await (page as any).evaluate(() => {
-          const text = (document.body as HTMLElement)?.innerText ?? ''
-          const html = document.documentElement.innerHTML
-          const rawEmails = (text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g) ?? []) as string[]
-          const mailtoEmails = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href^="mailto:"]'))
-            .map(a => a.href.replace('mailto:', '').split('?')[0])
-          const scripts = Array.from(document.scripts).map(s => s.src).filter(Boolean) as string[]
-          const generator = document.querySelector('meta[name="generator"]')?.getAttribute('content') ?? ''
-          const nameEls = Array.from(document.querySelectorAll<HTMLElement>(
-            'h2, h3, h4, [class*="name"], [class*="member"], [class*="person"]'
-          )).map(el => el.textContent?.trim() ?? '').filter(Boolean).slice(0, 30) as string[]
-          return { rawEmails, mailtoEmails, scripts, generator, nameEls, html: html.slice(0, 50_000) }
-        })
-
-        ;[...result.rawEmails, ...result.mailtoEmails].forEach((e: string) => emails.add(e.toLowerCase()))
-
-        if (url === `https://${domain}` && tech_stack.length === 0) {
-          tech_stack = detectTechStack(result.scripts, result.generator, result.html)
-        }
-
-        if (url.includes('/team') || url.includes('/about')) {
-          result.nameEls
-            .filter((n: string) => {
-              const words = n.split(/\s+/)
-              return words.length >= 2 && words.length <= 5 && n.length < 60
-            })
-            .forEach((n: string) => employees.add(n))
-        }
-
-        await new Promise(r => setTimeout(r, 700 + Math.random() * 400))
-      } catch {
-        // Skip unreachable pages
+  // Merge subdomains from hosts field
+  const subdomainSet = new Set<string>()
+  for (const r of results) {
+    for (const h of r.hosts ?? []) {
+      const hostname = typeof h === 'string' ? h : h.hostname
+      const clean = hostname.toLowerCase().trim()
+      if (clean.endsWith(`.${domain}`) && !clean.includes('*')) {
+        subdomainSet.add(clean)
       }
     }
-  } finally {
-    await page.close()
   }
 
-  const validEmails = Array.from(emails).filter(e => {
-    if (!EMAIL_REGEX.test(e)) return false
-    const local = e.split('@')[0]
-    return !/noreply|no-reply|bounce|mailer-daemon|postmaster|webmaster|sentry|loaderio/.test(local)
-  })
+  // Merge employees from linkedin_people + people
+  const employeeSet = new Set<string>()
+  for (const r of results) {
+    for (const p of [...(r.linkedin_people ?? []), ...(r.people ?? [])]) {
+      const clean = p.trim()
+      const words = clean.split(/\s+/)
+      if (words.length >= 2 && words.length <= 5 && clean.length < 60) {
+        employeeSet.add(clean)
+      }
+    }
+  }
+
+  // Tech stack from crt.sh is not available via theHarvester — detect via DNS/HTTP headers
+  const tech_stack = await detectTechStack(domain)
 
   return {
-    emails: validEmails.slice(0, 10),
-    employees: Array.from(employees).slice(0, 10),
+    emails: Array.from(emailSet).slice(0, 10),
+    employees: Array.from(employeeSet).slice(0, 10),
+    subdomains: Array.from(subdomainSet).slice(0, 20),
     tech_stack,
   }
 }
 
-function detectTechStack(scripts: string[], generator: string, html: string): string[] {
-  const stack = new Set<string>()
-  const combined = [...scripts, generator, html.slice(0, 15_000)].join(' ').toLowerCase()
+async function runHarvester(domain: string, source: string, limit: number): Promise<HarvesterJson | null> {
+  const tmpDir = os.tmpdir()
+  const outFile = path.join(tmpDir, `harvest_${domain}_${source}_${Date.now()}`)
 
-  const checks: [string | RegExp, string][] = [
-    ['shopify', 'Shopify'],
-    ['woocommerce', 'WooCommerce'],
-    ['squarespace', 'Squarespace'],
-    ['bigcommerce', 'BigCommerce'],
-    ['magento', 'Magento'],
-    [/wp-content|wp-includes|wordpress/, 'WordPress'],
-    ['ghost.io', 'Ghost'],
-    ['webflow', 'Webflow'],
-    ['wix.com', 'Wix'],
-    ['googletagmanager', 'Google Tag Manager'],
-    ['google-analytics', 'Google Analytics'],
-    ['hotjar', 'Hotjar'],
-    ['klaviyo', 'Klaviyo'],
-    ['hubspot', 'HubSpot'],
-    ['intercom', 'Intercom'],
-    ['stripe.com', 'Stripe'],
-    ['paypal', 'PayPal'],
-    ['cloudflare', 'Cloudflare'],
-    ['amazonaws', 'AWS'],
-    ['doordash', 'DoorDash'],
-    ['ubereats', 'Uber Eats'],
-    ['grubhub', 'Grubhub'],
-  ]
+  try {
+    // Rate-limit: small delay between source calls to avoid IP blocking
+    await new Promise(r => setTimeout(r, 500 + Math.random() * 1000))
 
-  for (const [pattern, name] of checks) {
-    if (typeof pattern === 'string' ? combined.includes(pattern) : pattern.test(combined)) {
-      stack.add(name)
+    await execFileAsync(
+      'python3',
+      ['-m', 'theHarvester', '-d', domain, '-b', source, '-l', String(limit), '-f', outFile],
+      { timeout: 60_000 }
+    )
+
+    const jsonPath = outFile + '.json'
+    try {
+      const raw = await fs.readFile(jsonPath, 'utf-8')
+      await fs.unlink(jsonPath).catch(() => {})
+      return JSON.parse(raw) as HarvesterJson
+    } catch {
+      return null
+    }
+  } catch (err) {
+    console.warn(`theHarvester [${source}] failed for ${domain}:`, err instanceof Error ? err.message : err)
+    return null
+  } finally {
+    // Clean up any leftover files
+    for (const ext of ['.json', '.xml', '']) {
+      await fs.unlink(outFile + ext).catch(() => {})
     }
   }
+}
 
+async function detectTechStack(domain: string): Promise<string[]> {
+  const stack = new Set<string>()
+  try {
+    const res = await fetch(`https://${domain}`, {
+      signal: AbortSignal.timeout(8_000),
+      redirect: 'follow',
+    })
+    const headers = Object.fromEntries(res.headers.entries())
+    const html = await res.text().catch(() => '')
+    const combined = [
+      headers['x-powered-by'] ?? '',
+      headers['server'] ?? '',
+      headers['x-generator'] ?? '',
+      html.slice(0, 20_000),
+    ].join(' ').toLowerCase()
+
+    const checks: [string | RegExp, string][] = [
+      ['shopify', 'Shopify'],
+      ['woocommerce', 'WooCommerce'],
+      ['squarespace', 'Squarespace'],
+      ['bigcommerce', 'BigCommerce'],
+      ['magento', 'Magento'],
+      [/wp-content|wp-includes|wordpress/, 'WordPress'],
+      ['ghost.io', 'Ghost'],
+      ['webflow', 'Webflow'],
+      ['wix.com', 'Wix'],
+      ['googletagmanager', 'Google Tag Manager'],
+      ['google-analytics', 'Google Analytics'],
+      ['hotjar', 'Hotjar'],
+      ['klaviyo', 'Klaviyo'],
+      ['hubspot', 'HubSpot'],
+      ['intercom', 'Intercom'],
+      ['stripe.com', 'Stripe'],
+      ['paypal', 'PayPal'],
+      ['cloudflare', 'Cloudflare'],
+      ['amazonaws', 'AWS'],
+      ['doordash', 'DoorDash'],
+      ['ubereats', 'Uber Eats'],
+      ['grubhub', 'Grubhub'],
+      ['google workspace', 'Google Workspace'],
+      ['gsuite', 'Google Workspace'],
+    ]
+
+    for (const [pattern, name] of checks) {
+      if (typeof pattern === 'string' ? combined.includes(pattern) : pattern.test(combined)) {
+        stack.add(name)
+      }
+    }
+  } catch {
+    // Ignore — tech stack detection is best-effort
+  }
   return Array.from(stack)
+}
+
+function isValidEmail(email: string): boolean {
+  if (!EMAIL_REGEX.test(email)) return false
+  const local = email.split('@')[0]
+  return !SPAM_EMAIL_PREFIXES.test(local)
 }

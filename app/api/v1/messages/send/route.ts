@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient, logUsage } from '@/lib/supabase-admin'
-import { newPage, closeBrowser, injectSessionCookies } from '@/lib/browser'
+import { newContextPw, closeBrowserPw } from '@/lib/browser-playwright'
+import type { Page } from 'playwright'
 import type { Platform } from '@/types'
 
 export const runtime = 'nodejs'
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
       lead_id: message.lead_id,
       api_key_id: apiKeyId,
       platform: lead.platform as Platform,
-      status: scheduled_at ? 'pending' : 'pending',
+      status: 'pending',
       sent_at: null,
     })
     .select()
@@ -76,8 +77,6 @@ export async function POST(request: NextRequest) {
 
   // --- Handle scheduled send ---
   if (scheduled_at) {
-    // In production, push to a queue (e.g. Inngest, BullMQ, Upstash QStash)
-    // For now, persist as pending and return
     await logUsage(supabase, { api_key_id: apiKeyId, endpoint: '/api/v1/messages/send' })
 
     return NextResponse.json(
@@ -91,30 +90,34 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // --- Send immediately via Puppeteer ---
+  // --- Send immediately via Playwright ---
   let status: 'sent' | 'failed' = 'failed'
   let errorMsg: string | null = null
   let sentAt: string | null = null
 
+  const platform = lead.platform as Platform
+  const ctx = await newContextPw(platform, apiKeyId)
+  const page = await ctx.newPage()
+
+  // Block images/media for speed while keeping JS and XHR
+  await page.route('**/*.{png,jpg,jpeg,gif,webp,mp4,svg,woff,woff2,ttf}', route => route.abort())
+
   try {
-    const page = await newPage()
-    try {
-      await sendMessage(page, {
-        platform: lead.platform as Platform,
-        profileUrl: lead.profile_url as string,
-        username: lead.username as string,
-        messageText: message.generated_message as string,
-        apiKeyId,
-      })
-      status = 'sent'
-      sentAt = new Date().toISOString()
-    } finally {
-      await page.close()
-      await closeBrowser()
-    }
+    await sendMessage(page, {
+      platform,
+      profileUrl: lead.profile_url as string,
+      username: lead.username as string,
+      messageText: message.generated_message as string,
+    })
+    status = 'sent'
+    sentAt = new Date().toISOString()
   } catch (err) {
     errorMsg = err instanceof Error ? err.message : 'Unknown error'
     console.error('Send error:', err)
+  } finally {
+    await page.close().catch(() => {})
+    await ctx.close().catch(() => {})
+    await closeBrowserPw()
   }
 
   // --- Update outreach log ---
@@ -156,14 +159,9 @@ interface SendParams {
   profileUrl: string
   username: string
   messageText: string
-  apiKeyId: string
 }
 
-async function sendMessage(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  page: any,
-  params: SendParams
-): Promise<void> {
+async function sendMessage(page: Page, params: SendParams): Promise<void> {
   switch (params.platform) {
     case 'instagram':
       return sendInstagramDM(page, params)
@@ -174,105 +172,70 @@ async function sendMessage(
   }
 }
 
-async function sendInstagramDM(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  page: any,
-  { username, messageText, apiKeyId }: SendParams
-): Promise<void> {
-  await injectSessionCookies(page, 'instagram', apiKeyId)
-  // 1. Navigate to the user's profile
+async function sendInstagramDM(page: Page, { username, messageText }: SendParams): Promise<void> {
+  // Cookies already injected into context before page was created
   await page.goto(`https://www.instagram.com/${username}/`, {
-    waitUntil: 'networkidle2',
+    waitUntil: 'domcontentloaded',
     timeout: 30_000,
   })
 
-  // 2. Click the "Message" button on their profile
-  // Instagram renders this as a plain DIV with no aria-label — find by text content
-  await new Promise(r => setTimeout(r, 2_000))
-  const messageBtn = await page.evaluateHandle(() => {
-    const els = Array.from(document.querySelectorAll('div, button'))
-    return els.find(el =>
-      el.textContent?.trim() === 'Message' &&
-      !el.querySelector('*') === false || el.textContent?.trim() === 'Message'
-    ) ?? null
-  })
+  // Wait for profile to load, then find the Message button
+  await page.waitForTimeout(2_000)
 
-  const msgBtnEl = messageBtn.asElement()
-  if (!msgBtnEl) {
-    throw new Error('Instagram: Message button not found. Is the session cookie set?')
-  }
+  const messageBtn = page.getByRole('button', { name: /^message$/i })
+    .or(page.locator('div, button').filter({ hasText: /^Message$/ }).first())
 
-  await msgBtnEl.click()
-  await new Promise(r => setTimeout(r, 3_000))
+  await messageBtn.waitFor({ timeout: 10_000 })
+  await messageBtn.click()
 
-  // 3. Type and send the message — DM composer input
-  const inputBox = await page
-    .waitForSelector('div[contenteditable="true"][role="textbox"], textarea[placeholder]', { timeout: 10_000 })
-    .catch(() => null)
+  await page.waitForTimeout(3_000)
 
-  if (!inputBox) throw new Error('Instagram: DM input not found')
+  // DM composer input
+  const inputBox = page
+    .locator('div[contenteditable="true"][role="textbox"], textarea[placeholder]')
+    .first()
 
+  await inputBox.waitFor({ timeout: 10_000 })
   await inputBox.click()
   await inputBox.type(messageText, { delay: 30 })
 
-  // Press Enter to send
   await page.keyboard.press('Enter')
-  await new Promise(r => setTimeout(r, 2_000))
+  await page.waitForTimeout(2_000)
 }
 
-async function sendTwitterDM(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  page: any,
-  { username, messageText, apiKeyId }: SendParams
-): Promise<void> {
-  await injectSessionCookies(page, 'twitter', apiKeyId)
+async function sendTwitterDM(page: Page, { username, messageText }: SendParams): Promise<void> {
   await page.goto(`https://twitter.com/messages/compose?recipient_id=@${username}`, {
-    waitUntil: 'networkidle2',
+    waitUntil: 'domcontentloaded',
     timeout: 30_000,
   })
 
-  const input = await page
-    .waitForSelector('[data-testid="dmComposerTextInput"]', { timeout: 8_000 })
-    .catch(() => null)
-
-  if (!input) throw new Error('Twitter: DM input not found. Is the auth token set?')
-
+  const input = page.locator('[data-testid="dmComposerTextInput"]')
+  await input.waitFor({ timeout: 8_000 })
   await input.click()
   await input.type(messageText, { delay: 30 })
 
-  const sendBtn = await page.$('[data-testid="dmComposerSendButton"]')
-  if (!sendBtn) throw new Error('Twitter: Send button not found')
+  const sendBtn = page.locator('[data-testid="dmComposerSendButton"]')
+  await sendBtn.waitFor({ timeout: 8_000 })
   await sendBtn.click()
-  await new Promise(r => setTimeout(r, 2_000))
+
+  await page.waitForTimeout(2_000)
 }
 
-async function sendLinkedInMessage(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  page: any,
-  { profileUrl, messageText, apiKeyId }: SendParams
-): Promise<void> {
-  await injectSessionCookies(page, 'linkedin', apiKeyId)
-  await page.goto(profileUrl, { waitUntil: 'networkidle2', timeout: 30_000 })
+async function sendLinkedInMessage(page: Page, { profileUrl, messageText }: SendParams): Promise<void> {
+  await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 })
 
-  const msgBtn = await page
-    .waitForSelector('[aria-label^="Message"]', { timeout: 8_000 })
-    .catch(() => null)
-
-  if (!msgBtn) throw new Error('LinkedIn: Message button not found. Is the li_at cookie set?')
-
+  const msgBtn = page.locator('[aria-label^="Message"]').first()
+  await msgBtn.waitFor({ timeout: 8_000 })
   await msgBtn.click()
 
-  const input = await page
-    .waitForSelector('.msg-form__contenteditable', { timeout: 8_000 })
-    .catch(() => null)
-
-  if (!input) throw new Error('LinkedIn: Message input not found')
-
+  const input = page.locator('.msg-form__contenteditable').first()
+  await input.waitFor({ timeout: 8_000 })
   await input.click()
   await input.type(messageText, { delay: 30 })
 
-  const sendBtn = await page.$('.msg-form__send-button')
-  if (!sendBtn) throw new Error('LinkedIn: Send button not found')
+  const sendBtn = page.locator('.msg-form__send-button').first()
+  await sendBtn.waitFor({ timeout: 8_000 })
   await sendBtn.click()
-  await new Promise(r => setTimeout(r, 2_000))
+
+  await page.waitForTimeout(2_000)
 }

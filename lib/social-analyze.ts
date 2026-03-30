@@ -1,4 +1,4 @@
-import { newPage } from './browser'
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 
 export type SocialPlatform = 'instagram' | 'twitter' | 'linkedin'
 
@@ -13,6 +13,40 @@ export interface PlatformAnalysis {
 }
 
 export type SocialAnalysisResult = Partial<Record<SocialPlatform, PlatformAnalysis>>
+
+let _browser: Browser | null = null
+
+async function getBrowser(): Promise<Browser> {
+  if (!_browser || !_browser.isConnected()) {
+    _browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
+    })
+  }
+  return _browser
+}
+
+async function newContext(): Promise<BrowserContext> {
+  const browser = await getBrowser()
+  return browser.newContext({
+    userAgent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    viewport: { width: 1280, height: 800 },
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    // Simulate human-like browser fingerprint
+    extraHTTPHeaders: {
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+  })
+}
+
+export async function closeSocialBrowser(): Promise<void> {
+  if (_browser) {
+    await _browser.close().catch(() => {})
+    _browser = null
+  }
+}
 
 export async function analyzeSocialProfiles(params: {
   lead: Record<string, unknown>
@@ -42,7 +76,12 @@ export async function analyzeSocialProfiles(params: {
   }
 
   for (const target of targets) {
-    const page = await newPage()
+    const ctx = await newContext()
+    const page = await ctx.newPage()
+
+    // Block images/media to speed up loads, simulate human browsing
+    await page.route('**/*.{png,jpg,jpeg,gif,webp,mp4,svg,woff,woff2,ttf}', route => route.abort())
+
     try {
       let analysis: PlatformAnalysis
       if (target.platform === 'instagram') {
@@ -56,10 +95,12 @@ export async function analyzeSocialProfiles(params: {
     } catch {
       result[target.platform] = unknownAnalysis()
     } finally {
-      await page.close()
+      await page.close().catch(() => {})
+      await ctx.close().catch(() => {})
     }
 
-    await new Promise(r => setTimeout(r, 1_000 + Math.random() * 1_000))
+    // Rate-limit between platform requests to avoid bans
+    await new Promise(r => setTimeout(r, 2_000 + Math.random() * 2_000))
   }
 
   return result
@@ -115,33 +156,48 @@ function parseCount(raw: string | null | undefined): number | null {
   return isNaN(n) ? null : n
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function analyzeInstagram(page: any, url: string): Promise<PlatformAnalysis> {
+async function analyzeInstagram(page: Page, url: string): Promise<PlatformAnalysis> {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
-  await new Promise(r => setTimeout(r, 2_000))
 
-  const { isPrivate, followerRaw, postRaw } = await page.evaluate(() => {
+  // Human-like delay before reading content
+  await page.waitForTimeout(2_000 + Math.random() * 1_000)
+
+  const { isPrivate, followerRaw, postRaw, likeRaw, commentRaw } = await page.evaluate(() => {
     const text = (document.body as HTMLElement)?.innerText ?? ''
     const isPrivate = /this account is private|account is private/i.test(text)
     const followerMatch = text.match(/([\d,.]+[KkMm]?)\s*[Ff]ollowers/)
     const postMatch = text.match(/([\d,.]+[KkMm]?)\s*posts?/i)
+    // Engagement: try to find likes and comments on recent posts from meta tags
+    const likeMatch = text.match(/(\d[\d,.]*[KkMm]?)\s*likes?/i)
+    const commentMatch = text.match(/(\d[\d,.]*[KkMm]?)\s*comments?/i)
     return {
       isPrivate,
       followerRaw: followerMatch?.[1] ?? null,
       postRaw: postMatch?.[1] ?? null,
+      likeRaw: likeMatch?.[1] ?? null,
+      commentRaw: commentMatch?.[1] ?? null,
     }
   })
 
   const followers = parseCount(followerRaw)
   const totalPosts = parseCount(postRaw)
-  // Rough monthly estimate assuming posts spread over ~1 year
   const postsLastMonth = totalPosts !== null ? Math.min(Math.round(totalPosts / 12), 30) : null
   const activityLevel = isPrivate ? 'private' : calcActivityLevel(postsLastMonth)
+
+  // Estimate engagement rate from visible like/comment counts
+  let engagementRate: number | null = null
+  if (followers && followers > 0) {
+    const likes = parseCount(likeRaw) ?? 0
+    const comments = parseCount(commentRaw) ?? 0
+    if (likes > 0 || comments > 0) {
+      engagementRate = Math.round(((likes + comments) / followers) * 1000) / 1000
+    }
+  }
 
   return {
     followers,
     posts_last_month: postsLastMonth,
-    engagement_rate: null, // Requires auth to access likes/comments
+    engagement_rate: engagementRate,
     activity_level: activityLevel,
     is_private: isPrivate,
     is_inactive: postsLastMonth === 0,
@@ -149,54 +205,71 @@ async function analyzeInstagram(page: any, url: string): Promise<PlatformAnalysi
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function analyzeTwitter(page: any, url: string): Promise<PlatformAnalysis> {
+async function analyzeTwitter(page: Page, url: string): Promise<PlatformAnalysis> {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
-  await new Promise(r => setTimeout(r, 2_000))
+  await page.waitForTimeout(2_000 + Math.random() * 1_000)
 
-  const { isPrivate, followerRaw } = await page.evaluate(() => {
+  const { isPrivate, followerRaw, followingRaw, tweetCountRaw } = await page.evaluate(() => {
     const text = (document.body as HTMLElement)?.innerText ?? ''
     const isPrivate = /protected|tweets are protected/i.test(text)
     const followerMatch = text.match(/([\d,.]+[KkMm]?)\s*[Ff]ollowers/)
-    return { isPrivate, followerRaw: followerMatch?.[1] ?? null }
+    const followingMatch = text.match(/([\d,.]+[KkMm]?)\s*[Ff]ollowing/)
+    const tweetMatch = text.match(/([\d,.]+[KkMm]?)\s*[Tt]weets?/)
+    return {
+      isPrivate,
+      followerRaw: followerMatch?.[1] ?? null,
+      followingRaw: followingMatch?.[1] ?? null,
+      tweetCountRaw: tweetMatch?.[1] ?? null,
+    }
   })
 
   const followers = parseCount(followerRaw)
-  const activityLevel: PlatformAnalysis['activity_level'] = isPrivate ? 'private' : 'unknown'
+  const totalTweets = parseCount(tweetCountRaw)
+  // Rough monthly estimate: assume account age ~2 years
+  const postsLastMonth = totalTweets !== null ? Math.min(Math.round(totalTweets / 24), 60) : null
+  const activityLevel: PlatformAnalysis['activity_level'] = isPrivate
+    ? 'private'
+    : calcActivityLevel(postsLastMonth)
 
   return {
     followers,
-    posts_last_month: null,
+    posts_last_month: postsLastMonth,
     engagement_rate: null,
     activity_level: activityLevel,
     is_private: isPrivate,
-    is_inactive: false,
-    suggested_action: suggestAction(followers, activityLevel, isPrivate, false),
+    is_inactive: postsLastMonth === 0,
+    suggested_action: suggestAction(followers, activityLevel, isPrivate, postsLastMonth === 0),
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function analyzeLinkedIn(page: any, url: string): Promise<PlatformAnalysis> {
+async function analyzeLinkedIn(page: Page, url: string): Promise<PlatformAnalysis> {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
-  await new Promise(r => setTimeout(r, 2_000))
+  await page.waitForTimeout(2_000 + Math.random() * 1_000)
 
-  const { followerRaw } = await page.evaluate(() => {
+  const { followerRaw, postCountRaw } = await page.evaluate(() => {
     const text = (document.body as HTMLElement)?.innerText ?? ''
     const followerMatch = text.match(/([\d,.]+[KkMm]?)\s*followers/i)
-    return { followerRaw: followerMatch?.[1] ?? null }
+    const postMatch = text.match(/([\d,.]+[KkMm]?)\s*posts?/i)
+    return {
+      followerRaw: followerMatch?.[1] ?? null,
+      postCountRaw: postMatch?.[1] ?? null,
+    }
   })
 
   const followers = parseCount(followerRaw)
+  const totalPosts = parseCount(postCountRaw)
+  const postsLastMonth = totalPosts !== null ? Math.min(Math.round(totalPosts / 12), 30) : null
   const activityLevel: PlatformAnalysis['activity_level'] =
+    postsLastMonth !== null ? calcActivityLevel(postsLastMonth) :
     followers !== null ? (followers > 500 ? 'medium' : 'low') : 'unknown'
 
   return {
     followers,
-    posts_last_month: null,
+    posts_last_month: postsLastMonth,
     engagement_rate: null,
     activity_level: activityLevel,
     is_private: false,
-    is_inactive: false,
-    suggested_action: suggestAction(followers, activityLevel, false, false),
+    is_inactive: postsLastMonth === 0,
+    suggested_action: suggestAction(followers, activityLevel, false, postsLastMonth === 0),
   }
 }
