@@ -117,7 +117,6 @@ export async function POST(request: NextRequest) {
   } finally {
     await page.close().catch(() => {})
     await ctx.close().catch(() => {})
-    await closeBrowserPw()
   }
 
   // --- Update outreach log ---
@@ -182,8 +181,7 @@ async function sendInstagramDM(page: Page, { username, messageText }: SendParams
   // Wait for profile to load, then find the Message button
   await page.waitForTimeout(2_000)
 
-  const messageBtn = page.getByRole('button', { name: /^message$/i })
-    .or(page.locator('div, button').filter({ hasText: /^Message$/ }).first())
+  const messageBtn = page.getByRole('button', { name: 'Message', exact: true }).first()
 
   await messageBtn.waitFor({ timeout: 10_000 })
   await messageBtn.click()
@@ -197,8 +195,9 @@ async function sendInstagramDM(page: Page, { username, messageText }: SendParams
 
   await inputBox.waitFor({ timeout: 10_000 })
   await inputBox.click()
-  await inputBox.type(messageText, { delay: 30 })
+  await inputBox.fill(messageText)
 
+  await page.waitForTimeout(500)
   await page.keyboard.press('Enter')
   await page.waitForTimeout(2_000)
 }
@@ -212,7 +211,7 @@ async function sendTwitterDM(page: Page, { username, messageText }: SendParams):
   const input = page.locator('[data-testid="dmComposerTextInput"]')
   await input.waitFor({ timeout: 8_000 })
   await input.click()
-  await input.type(messageText, { delay: 30 })
+  await input.fill(messageText)
 
   const sendBtn = page.locator('[data-testid="dmComposerSendButton"]')
   await sendBtn.waitFor({ timeout: 8_000 })
@@ -231,7 +230,7 @@ async function sendLinkedInMessage(page: Page, { profileUrl, messageText }: Send
   const input = page.locator('.msg-form__contenteditable').first()
   await input.waitFor({ timeout: 8_000 })
   await input.click()
-  await input.type(messageText, { delay: 30 })
+  await input.fill(messageText)
 
   const sendBtn = page.locator('.msg-form__send-button').first()
   await sendBtn.waitFor({ timeout: 8_000 })
