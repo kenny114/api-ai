@@ -69,13 +69,17 @@ function EndpointCard({
 // ---------------------------------------------------------------------------
 
 const SECTIONS = [
-  { id: 'authentication', label: 'Authentication' },
-  { id: 'errors',         label: 'Errors'         },
-  { id: 'leads-find',     label: 'Find Leads'     },
-  { id: 'messages-gen',   label: 'Generate Message' },
-  { id: 'messages-send',  label: 'Send Message'   },
-  { id: 'credentials',    label: 'Credentials'    },
-  { id: 'quickstart',     label: 'Quick start'    },
+  { id: 'authentication',   label: 'Authentication'     },
+  { id: 'errors',           label: 'Errors'             },
+  { id: 'leads-find',       label: 'Find Leads'         },
+  { id: 'osint-enrich',     label: 'OSINT Enrich'       },
+  { id: 'social-analyze',   label: 'Social Analyze'     },
+  { id: 'website-analyze',  label: 'Website Analyze'    },
+  { id: 'intelligence',     label: 'Intelligence'       },
+  { id: 'messages-gen',     label: 'Generate Message'   },
+  { id: 'messages-send',    label: 'Send Message'       },
+  { id: 'credentials',      label: 'Credentials'        },
+  { id: 'quickstart',       label: 'Quick start'        },
 ]
 
 // ---------------------------------------------------------------------------
@@ -210,6 +214,120 @@ export default function DocsPage() {
           </section>
 
           <EndpointCard
+            id="osint-enrich"
+            method="POST"
+            path="/api/v1/leads/osint-enrich"
+            description="Enrich a lead with publicly available data — emails, employee names, subdomains, and tech stack detected from their website and certificate logs."
+            request={`{
+  "lead_id": "a1b2c3d4-...",       // required — UUID from leads/find
+  "domain": "joespizza.com",       // optional — overrides lead's profile_url domain
+  "company_name": "Joe's Pizza"    // optional — overrides lead's name
+}`}
+            response={`{
+  "lead_id": "a1b2c3d4-...",
+  "emails": ["owner@joespizza.com", "info@joespizza.com"],
+  "employees": ["Joe Smith", "Mary Lopez"],
+  "subdomains": ["mail.joespizza.com", "api.joespizza.com"],
+  "tech_stack": ["Shopify", "Google Tag Manager", "Stripe"],
+  "updated_at": "2026-03-29T15:12:00Z"
+}`}
+          />
+
+          <EndpointCard
+            id="social-analyze"
+            method="POST"
+            path="/api/v1/leads/social-analyze"
+            description="Visit a lead's social profiles to extract followers, activity level, and get a suggested outreach action."
+            request={`{
+  "lead_id": "a1b2c3d4-...",                    // required
+  "social_urls": [                               // optional — overrides lead's profile_url
+    "https://instagram.com/joespizza"
+  ],
+  "platform": "instagram"                        // optional — instagram | twitter | linkedin
+}`}
+            response={`{
+  "lead_id": "a1b2c3d4-...",
+  "social_analysis": {
+    "instagram": {
+      "followers": 4500,
+      "posts_last_month": 4,
+      "engagement_rate": null,
+      "activity_level": "low",
+      "suggested_action": "like_then_dm",
+      "is_private": false,
+      "is_inactive": false
+    }
+  },
+  "updated_at": "2026-03-29T15:18:00Z"
+}`}
+          />
+
+          <EndpointCard
+            id="website-analyze"
+            method="POST"
+            path="/api/v1/leads/website-analyze"
+            description="Visit a lead's website to extract contact info, detect menu/ordering pages, and suggest the best outreach channel."
+            request={`{
+  "lead_id": "a1b2c3d4-...",           // required
+  "url": "https://joespizza.com"        // optional — overrides lead's profile_url
+}`}
+            response={`{
+  "lead_id": "a1b2c3d4-...",
+  "website_analysis": {
+    "emails": ["info@joespizza.com"],
+    "phones": ["555-123-4567"],
+    "has_menu": true,
+    "has_online_ordering": false,
+    "suggested_action": "email_or_dm"
+  },
+  "updated_at": "2026-03-29T15:22:00Z"
+}`}
+          />
+
+          <EndpointCard
+            id="intelligence"
+            method="POST"
+            path="/api/v1/leads/intelligence"
+            description="Run the full intelligence pipeline — OSINT enrichment, social analysis, and website analysis in one call. Returns a combined report with AI-generated insights and outreach recommendations."
+            request={`{
+  "lead_id": "a1b2c3d4-...",                    // required
+  "domain": "joespizza.com",                    // optional overrides
+  "company_name": "Joe's Pizza",
+  "social_urls": ["https://instagram.com/joespizza"],
+  "website_url": "https://joespizza.com"
+}`}
+            response={`{
+  "lead_id": "a1b2c3d4-...",
+  "contact": {
+    "emails": ["info@joespizza.com", "owner@joespizza.com"],
+    "phones": ["555-123-4567"],
+    "decision_makers": ["Joe Smith"]
+  },
+  "website_analysis": {
+    "has_menu": true,
+    "has_online_ordering": false
+  },
+  "social_analysis": {
+    "instagram": {
+      "followers": 4500,
+      "activity_level": "low",
+      "suggested_action": "like_then_dm"
+    }
+  },
+  "insights": {
+    "pain_points": ["low social activity", "no online ordering"],
+    "opportunity": "Help them drive more orders through Instagram"
+  },
+  "suggested_outreach": {
+    "channel": "instagram_dm",
+    "message_angle": "personalized outreach based on business intelligence",
+    "next_step": "like_recent_post_then_send_dm"
+  },
+  "updated_at": "2026-03-29T15:30:00Z"
+}`}
+          />
+
+          <EndpointCard
             id="messages-gen"
             method="POST"
             path="/api/v1/messages/generate"
@@ -265,21 +383,28 @@ export default function DocsPage() {
           <section id="quickstart" className="scroll-mt-24">
             <h2 className="text-xl font-bold text-white mb-4">Quick start</h2>
             <p className="text-zinc-400 text-sm mb-5">
-              Three API calls to go from zero to sent DM.
+              Five API calls to go from zero to sent DM — with full intelligence on every lead.
             </p>
             <Code>{`# 1. Find leads (Google Maps)
 curl -X POST https://your-app.vercel.app/api/v1/leads/find \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"area":"coffee shops London","limit":5}'
+  -d '{"area":"pizza shops Austin TX","limit":5}'
 
-# 2. Generate a message (use lead_id from step 1)
+# 2. Run full intelligence pipeline (use lead_id from step 1)
+#    → OSINT + social analysis + website analysis + AI insights in one call
+curl -X POST https://your-app.vercel.app/api/v1/leads/intelligence \\
+  -H "x-api-key: sk_live_YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"lead_id":"<id>"}'
+
+# 3. Generate a personalised message (use lead_id from step 1)
 curl -X POST https://your-app.vercel.app/api/v1/messages/generate \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"lead_id":"<id>","template":"cold_outreach","tone":"friendly"}'
 
-# 3. Send it (use message_id from step 2)
+# 4. Send it (use message_id from step 3)
 curl -X POST https://your-app.vercel.app/api/v1/messages/send \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
