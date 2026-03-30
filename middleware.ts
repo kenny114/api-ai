@@ -40,6 +40,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // ── MCP remote server — uses Bearer auth internally, skip x-api-key check ─
+  if (pathname === '/api/mcp' || pathname.startsWith('/api/mcp/')) return NextResponse.next()
+
   // ── API v1: key management uses ADMIN_SECRET — skip API key check ───────
   if (pathname === '/api/v1/keys') return NextResponse.next()
 
@@ -135,6 +138,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/api/v1/:path*',
+    '/api/mcp',
     '/api/dashboard/:path*',
     '/dashboard/:path*',
     '/api-keys/:path*',
