@@ -72,16 +72,25 @@ export async function POST(request: NextRequest) {
   }
 
   const existingMeta = (lead.metadata as Record<string, unknown>) ?? {}
-  await supabase
-    .from('leads')
-    .update({
-      metadata: {
-        ...existingMeta,
-        website_analysis: websiteAnalysis,
-        website_analyzed_at: new Date().toISOString(),
-      },
-    })
-    .eq('id', lead_id)
+
+  // If we found a social profile and the lead has no social profile_url yet, update it
+  const socialLinks = websiteAnalysis.social_links
+  const leadUpdate: Record<string, unknown> = {
+    metadata: {
+      ...existingMeta,
+      website_analysis: websiteAnalysis,
+      website_analyzed_at: new Date().toISOString(),
+    },
+  }
+
+  if (socialLinks.instagram && lead.platform === 'google_maps') {
+    leadUpdate.platform = 'instagram'
+    leadUpdate.profile_url = socialLinks.instagram
+    const handle = socialLinks.instagram.match(/instagram\.com\/([^/?#]+)/)?.[1]
+    if (handle) leadUpdate.username = handle
+  }
+
+  await supabase.from('leads').update(leadUpdate).eq('id', lead_id)
 
   await logUsage(supabase, { api_key_id: apiKeyId, endpoint: '/api/v1/leads/website-analyze' })
 

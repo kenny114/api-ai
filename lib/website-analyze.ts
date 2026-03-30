@@ -8,6 +8,12 @@ export interface WebsiteAnalysisResult {
   has_menu: boolean
   has_online_ordering: boolean
   suggested_action: 'email_or_dm' | 'call_preferred' | 'dm_only' | 'skip'
+  social_links: {
+    instagram?: string
+    twitter?: string
+    facebook?: string
+    linkedin?: string
+  }
 }
 
 export async function analyzeWebsite(url: string): Promise<WebsiteAnalysisResult> {
@@ -28,6 +34,7 @@ export async function analyzeWebsite(url: string): Promise<WebsiteAnalysisResult
 
       const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]')).map(a => ({
         href: a.href.toLowerCase(),
+        hrefRaw: a.href,
         text: a.textContent?.trim().toLowerCase() ?? '',
       }))
 
@@ -44,7 +51,43 @@ export async function analyzeWebsite(url: string): Promise<WebsiteAnalysisResult
         ) ||
         /doordash|ubereats|grubhub|seamless|postmates/.test(html)
 
-      return { emailsFromText, emailsFromMailto, phones, hasMenu, hasOrdering }
+      // Extract social profile links
+      const socialLinks: Record<string, string> = {}
+      for (const l of links) {
+        if (!socialLinks.instagram && l.href.includes('instagram.com/')) {
+          const m = l.hrefRaw.match(/instagram\.com\/([^/?#]+)/)
+          if (m && !['p', 'reel', 'stories', 'explore'].includes(m[1])) {
+            socialLinks.instagram = l.hrefRaw.split('?')[0]
+          }
+        }
+        if (!socialLinks.twitter && (l.href.includes('twitter.com/') || l.href.includes('x.com/'))) {
+          socialLinks.twitter = l.hrefRaw.split('?')[0]
+        }
+        if (!socialLinks.facebook && l.href.includes('facebook.com/')) {
+          socialLinks.facebook = l.hrefRaw.split('?')[0]
+        }
+        if (!socialLinks.linkedin && l.href.includes('linkedin.com/')) {
+          socialLinks.linkedin = l.hrefRaw.split('?')[0]
+        }
+      }
+
+      // Also check JSON-LD sameAs for social links
+      const jsonLdScripts = Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'))
+      for (const script of jsonLdScripts) {
+        try {
+          const data = JSON.parse(script.textContent ?? '{}')
+          const sameAs: string[] = Array.isArray(data.sameAs) ? data.sameAs : []
+          for (const url of sameAs) {
+            const lower = url.toLowerCase()
+            if (!socialLinks.instagram && lower.includes('instagram.com/')) socialLinks.instagram = url.split('?')[0]
+            if (!socialLinks.twitter && (lower.includes('twitter.com/') || lower.includes('x.com/'))) socialLinks.twitter = url.split('?')[0]
+            if (!socialLinks.facebook && lower.includes('facebook.com/')) socialLinks.facebook = url.split('?')[0]
+            if (!socialLinks.linkedin && lower.includes('linkedin.com/')) socialLinks.linkedin = url.split('?')[0]
+          }
+        } catch { /* skip malformed JSON-LD */ }
+      }
+
+      return { emailsFromText, emailsFromMailto, phones, hasMenu, hasOrdering, socialLinks }
     })
 
     const allEmails = [...new Set([...data.emailsFromText, ...data.emailsFromMailto])]
@@ -65,6 +108,7 @@ export async function analyzeWebsite(url: string): Promise<WebsiteAnalysisResult
       has_menu: data.hasMenu,
       has_online_ordering: data.hasOrdering,
       suggested_action: determineSuggestedAction(allEmails, allPhones),
+      social_links: data.socialLinks ?? {},
     }
   } finally {
     await page.close()
