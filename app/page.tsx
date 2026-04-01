@@ -82,20 +82,20 @@ function HowItWorks() {
   const steps = [
     {
       step: '01',
-      title: 'Find Leads',
-      desc: 'Provide a platform and niche. We scrape matching profiles and return structured data — username, bio, follower count, and more.',
-      endpoint: 'POST /api/v1/leads/find',
+      title: 'Find & Enrich Leads',
+      desc: 'Scrape Google Maps for local businesses. Then run the full intelligence pipeline — OSINT emails, social stats, website contact info, and AI-generated insights in one call.',
+      endpoint: 'POST /api/v1/leads/find + /leads/intelligence',
     },
     {
       step: '02',
       title: 'Generate Message',
-      desc: 'Pass a lead ID. Our LLM writes a personalised outreach message tailored to their bio, platform, and your chosen tone.',
+      desc: 'Pass a lead ID. GPT-4o-mini writes a personalised outreach message tailored to their business, social presence, and your chosen tone and template.',
       endpoint: 'POST /api/v1/messages/generate',
     },
     {
       step: '03',
       title: 'Send It',
-      desc: 'Pass a message ID. We automate the DM delivery on the target platform. Schedule for later or send immediately.',
+      desc: 'Pass a message ID. We automate DM delivery via Instagram, Twitter/X, or LinkedIn using browser automation. Send immediately or schedule for later.',
       endpoint: 'POST /api/v1/messages/send',
     },
   ]
@@ -174,50 +174,66 @@ function Endpoints() {
           <EndpointCard
             method="POST"
             path="/api/v1/leads/find"
-            description="Scrape and return matching lead profiles from a given platform and niche."
+            description="Scrape Google Maps for local businesses. Returns structured lead records saved to your database."
             request={`{
-  "platform": "instagram",
-  "niche": "fitness coaches",
+  "area": "pizza restaurants New York",
   "limit": 10,
-  "filters": {
-    "min_followers": 5000,
-    "max_followers": 100000,
-    "location": "US"
-  }
+  "filters": { "no_website": true }
 }`}
             response={`{
+  "status": "ok",
+  "leads_found": 10,
   "leads": [
     {
       "id": "a1b2c3d4-...",
-      "username": "johnfitness",
-      "name": "John Smith",
-      "profile_url": "https://instagram.com/johnfitness",
-      "bio": "Online coach. Helping 500+ clients...",
-      "followers": 24800,
-      "platform": "instagram",
-      "niche": "fitness coaches"
+      "name": "Joe's Pizza",
+      "username": "joes_pizza",
+      "profile_url": "https://joespizza.com",
+      "platform": "google_maps"
     }
-  ],
-  "count": 10,
-  "credits_used": 1
+  ]
+}`}
+          />
+
+          <EndpointCard
+            method="POST"
+            path="/api/v1/leads/intelligence"
+            description="Full pipeline: OSINT enrichment + social analysis + website analysis + AI insights in one call."
+            request={`{
+  "lead_id": "a1b2c3d4-..."
+}`}
+            response={`{
+  "contact": {
+    "emails": ["owner@joespizza.com"],
+    "phones": ["+1-212-555-0100"]
+  },
+  "insights": {
+    "pain_points": ["No loyalty program"],
+    "opportunity": "Social media growth"
+  },
+  "suggested_outreach": {
+    "channel": "instagram",
+    "message_angle": "Local visibility"
+  }
 }`}
           />
 
           <EndpointCard
             method="POST"
             path="/api/v1/messages/generate"
-            description="Generate a personalised outreach message for a lead using AI."
+            description="Generate a personalised outreach message for a lead using GPT-4o-mini."
             request={`{
   "lead_id": "a1b2c3d4-...",
-  "campaign_type": "promotion",
-  "tone": "friendly"
+  "template": "cold_outreach",
+  "tone": "friendly",
+  "campaign_type": "promotion"
 }`}
             response={`{
   "message_id": "e5f6g7h8-...",
-  "message_text": "Hey John! Loved your recent content —
-we're running a limited promo for coaches
-and think you'd be a great fit.
-Mind if I share details?",
+  "message_text": "Hey Joe! Love what you're doing
+with Joe's Pizza. We help local restaurants
+grow their online presence — think you'd be
+a perfect fit. Mind if I share some details?",
   "status": "draft"
 }`}
           />
@@ -225,7 +241,7 @@ Mind if I share details?",
           <EndpointCard
             method="POST"
             path="/api/v1/messages/send"
-            description="Send an approved message via platform automation. Optionally schedule for later."
+            description="Send an approved message via Instagram DM, Twitter DM, or LinkedIn automation. Requires saved credentials."
             request={`{
   "message_id": "e5f6g7h8-...",
   "scheduled_at": null
@@ -233,9 +249,9 @@ Mind if I share details?",
             response={`{
   "log_id": "i9j0k1l2-...",
   "status": "sent",
-  "sent_at": "2024-03-15T14:23:01Z",
+  "sent_at": "2026-04-01T14:23:01Z",
   "platform": "instagram",
-  "username": "johnfitness"
+  "username": "joespizzanyc"
 }`}
           />
         </div>
@@ -247,15 +263,21 @@ Mind if I share details?",
 curl -X POST https://your-app.vercel.app/api/v1/leads/find \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"platform":"instagram","niche":"fitness coaches","limit":5}'
+  -d '{"area":"pizza restaurants New York","limit":5}'
 
-# 2. Generate a message (use lead id from step 1)
+# 2. Enrich with full intelligence (use lead id from step 1)
+curl -X POST https://your-app.vercel.app/api/v1/leads/intelligence \\
+  -H "x-api-key: sk_live_YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"lead_id":"<id>"}'
+
+# 3. Generate a message (use lead id from step 1)
 curl -X POST https://your-app.vercel.app/api/v1/messages/generate \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"lead_id":"<id>","campaign_type":"promotion","tone":"friendly"}'
+  -d '{"lead_id":"<id>","template":"cold_outreach","tone":"friendly"}'
 
-# 3. Send it (use message id from step 2)
+# 4. Send it (use message id from step 3)
 curl -X POST https://your-app.vercel.app/api/v1/messages/send \\
   -H "x-api-key: sk_live_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
@@ -318,18 +340,18 @@ function Features() {
     },
     {
       icon: 'sparkle',
-      title: 'AI generation',
-      desc: 'GPT-4o-mini by default. Swap to any OpenAI model via env var.',
+      title: 'OSINT enrichment',
+      desc: 'theHarvester-powered discovery of emails, employees, subdomains, and tech stack for any domain.',
     },
     {
       icon: 'layers',
-      title: 'Multi-platform',
-      desc: 'Instagram, Twitter/X, LinkedIn, and Google Maps supported out of the box.',
+      title: 'Multi-platform DMs',
+      desc: 'Instagram, Twitter/X, and LinkedIn DM automation via Playwright browser automation.',
     },
     {
       icon: 'database',
-      title: 'Postgres backend',
-      desc: 'All leads, messages, and logs stored in Supabase. Full history, no black boxes.',
+      title: 'MCP server',
+      desc: 'All 8 tools exposed as a remote MCP server. Connect Claude, Cursor, or any MCP-compatible agent in seconds.',
     },
   ]
 
@@ -350,6 +372,82 @@ function Features() {
               <p className="text-zinc-400 text-sm leading-relaxed">{item.desc}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ForAgents() {
+  const mcpConfig = `{
+  "mcpServers": {
+    "leadapi": {
+      "url": "https://your-app.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer sk_live_YOUR_KEY"
+      }
+    }
+  }
+}`
+
+  return (
+    <section id="for-agents" className="py-20 px-6 border-t border-zinc-800">
+      <div className="mx-auto max-w-6xl">
+        <div className="text-center mb-12">
+          <span className="inline-block bg-violet-900/40 text-violet-300 text-xs font-medium px-3 py-1 rounded-full border border-violet-800 mb-4">
+            Agent-native
+          </span>
+          <h2 className="text-3xl font-bold text-white mb-4">Built for AI Agents</h2>
+          <p className="text-zinc-400 max-w-xl mx-auto">
+            Integrate LeadAPI into your agent in minutes. Machine-readable docs, OpenAPI spec, and a remote MCP server ready to connect.
+          </p>
+        </div>
+
+        {/* Resource cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
+          {[
+            {
+              label: 'LLM Reference',
+              href: '/llms.txt',
+              desc: 'Plain text API reference optimised for LLM context windows.',
+              tag: '/llms.txt',
+            },
+            {
+              label: 'OpenAPI Spec',
+              href: '/openapi.json',
+              desc: 'OpenAPI 3.1 schema for typed integration and SDK generation.',
+              tag: '/openapi.json',
+            },
+            {
+              label: 'Interactive Docs',
+              href: '/docs',
+              desc: 'Full documentation with code examples in cURL, Node.js, and Python.',
+              tag: '/docs',
+            },
+          ].map(r => (
+            <a
+              key={r.href}
+              href={r.href}
+              className="border border-zinc-800 rounded-xl p-5 bg-zinc-900/20 hover:border-violet-800/60 hover:bg-violet-950/20 transition-colors group"
+            >
+              <code className="text-xs text-violet-400 font-mono mb-3 block">{r.tag}</code>
+              <div className="text-white font-semibold text-sm mb-1 group-hover:text-violet-300 transition-colors">{r.label}</div>
+              <p className="text-zinc-500 text-xs leading-relaxed">{r.desc}</p>
+            </a>
+          ))}
+        </div>
+
+        {/* MCP snippet */}
+        <div className="border border-zinc-800 rounded-xl p-6 bg-zinc-900/30">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold">Connect via MCP</h3>
+            <span className="text-xs text-zinc-500">Claude Desktop · Cursor · Windsurf</span>
+          </div>
+          <Code>{mcpConfig}</Code>
+          <p className="text-zinc-500 text-xs mt-3">
+            Or connect Claude.ai directly: Settings → Integrations → Add MCP Server →{' '}
+            <code className="text-violet-400 font-mono">https://your-app.vercel.app/api/mcp</code>
+          </p>
         </div>
       </div>
     </section>
@@ -449,6 +547,7 @@ export default function Home() {
         <HowItWorks />
         <Endpoints />
         <Features />
+        <ForAgents />
         <GetStarted />
       </main>
       <Footer />
