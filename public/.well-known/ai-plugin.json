@@ -11,8 +11,7 @@
   },
   "api": {
     "type": "openapi",
-    "url": "https://your-deployed-domain.vercel.app/openapi.json"
+    "url": "https://your-app.vercel.app/openapi.json"
   },
-  "mcp_endpoint": "https://your-deployed-domain.vercel.app/api/mcp",
-  "logo_url": "https://your-deployed-domain.vercel.app/logo.png"
+  "mcp_endpoint": "https://your-app.vercel.app/api/mcp"
 }

@@ -182,7 +182,7 @@ function Endpoints() {
   "filters": { "no_website": true }
 }`}
             response={`{
-  "status": "ok",
+  "status": "success",
   "leads_found": 10,
   "leads": [
     {

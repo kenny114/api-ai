@@ -17,7 +17,7 @@ MCP connections use Bearer token auth — pass your API key as the Bearer token 
 ## Base URL
 
 ```
-https://your-deployed-domain.vercel.app
+https://your-app.vercel.app
 ```
 
 ---
@@ -320,7 +320,7 @@ LeadAPI exposes all 8 tools via a remote MCP server (HTTP+SSE transport).
 ### Connect via Claude.ai
 
 Settings → Integrations → Add MCP Server
-URL: `https://your-deployed-domain.vercel.app/api/mcp`
+URL: `https://your-app.vercel.app/api/mcp`
 Auth: Bearer token (your LeadAPI API key)
 
 ### Connect via Claude Desktop / Cursor / Windsurf
@@ -331,7 +331,7 @@ Add to your MCP config:
 {
   "mcpServers": {
     "leadapi": {
-      "url": "https://your-deployed-domain.vercel.app/api/mcp",
+      "url": "https://your-app.vercel.app/api/mcp",
       "headers": {
         "Authorization": "Bearer sk_live_YOUR_KEY"
       }
