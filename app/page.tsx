@@ -31,6 +31,7 @@ function Nav() {
         <div className="flex items-center gap-6 text-sm text-zinc-400">
           <a href="/docs" className="hover:text-white transition-colors">Docs</a>
           <a href="#features" className="hover:text-white transition-colors">Features</a>
+          <a href="#for-agents" className="hover:text-white transition-colors">Agents</a>
           <a
             href="/dashboard"
             className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-md font-medium transition-colors"
@@ -528,7 +529,7 @@ function Footer() {
   return (
     <footer className="border-t border-zinc-800 py-8 px-6 text-center text-zinc-600 text-sm">
       <p>
-        LeadAPI &mdash; Built with Next.js, Supabase, OpenAI &amp; Puppeteer
+        LeadAPI &mdash; Built with Next.js, Supabase, OpenAI &amp; Playwright
       </p>
     </footer>
   )
