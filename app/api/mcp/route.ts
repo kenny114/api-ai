@@ -89,7 +89,7 @@ async function callLeadApi(
 const TOOLS = [
   {
     name: 'leads_find',
-    description: 'Scrape business listings from Google Maps for a given area or niche. Returns saved lead records.',
+    description: 'Scrape Google Maps for local businesses matching a search query and location. Returns business records saved to your leads database. Pass "area" as a combined query+location string (e.g. "pizza restaurants New York" or "dentists London"). Optional: "limit" (1–50, default 20), "no_website" (boolean, only return businesses with no website). Returns: id, name, username, profile_url, platform, metadata, created_at for each lead. → next step: call leads_intelligence with the returned lead id for full enrichment.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -102,7 +102,7 @@ const TOOLS = [
   },
   {
     name: 'leads_osint_enrich',
-    description: 'Enrich a lead with publicly available data — emails, employees, subdomains, and tech stack.',
+    description: 'Enrich a lead with publicly available data using theHarvester OSINT tool. Returns discovered emails, employee names, subdomains, and tech stack (e.g. Shopify, WordPress, Stripe). Pass "lead_id" (UUID from leads_find). Optional: "domain" to override the domain used for OSINT lookup, "company_name" to override the company name. → next step: call messages_generate with the lead_id to write an outreach message.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -115,7 +115,7 @@ const TOOLS = [
   },
   {
     name: 'leads_social_analyze',
-    description: "Analyze a lead's social profiles — followers, activity level, and suggested outreach action.",
+    description: "Analyze a lead's social media profile to get follower count, post frequency, engagement rate, activity level, and a suggested outreach action. Uses browser automation via Playwright to visit the profile. Pass \"lead_id\" (UUID from leads_find). Optional: \"social_urls\" (array of profile URLs to check), \"platform\" to specify instagram, twitter, or linkedin. → next step: call messages_generate with the lead_id.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -128,7 +128,7 @@ const TOOLS = [
   },
   {
     name: 'leads_website_analyze',
-    description: "Extract contact info, social links, menu pages, and best outreach channel from a lead's website.",
+    description: "Extract contact information, social profile links, ordering/booking pages, and the best outreach channel from a lead's website. Uses headless browser scraping. Pass \"lead_id\" (UUID from leads_find). Optional: \"url\" to override the website URL. Returns emails, phones, social links, whether they have online ordering, and the recommended outreach channel. → next step: call messages_generate with the lead_id.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -140,7 +140,7 @@ const TOOLS = [
   },
   {
     name: 'leads_intelligence',
-    description: 'Full intelligence pipeline: OSINT + social + website analysis + AI insights in one call.',
+    description: 'Full intelligence pipeline for a lead — runs OSINT enrichment, social profile analysis, website analysis, and AI insight generation all in one call. Returns contact info (emails, phones, decision makers), website analysis, social stats, insights (pain points, opportunity), suggested outreach (channel, message angle, next step). This is the most comprehensive enrichment option and preferred over running individual enrichment tools separately. Pass "lead_id" (UUID from leads_find). All other fields are optional overrides. → next step: call messages_generate with the lead_id.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -155,7 +155,7 @@ const TOOLS = [
   },
   {
     name: 'messages_generate',
-    description: 'Generate a personalised AI outreach message for a lead.',
+    description: 'Generate a personalised AI outreach message for a lead using GPT-4o-mini. The message is tailored to the lead\'s business, social presence, and the chosen tone. Returns message_id, message_text, and status (draft). Required: "lead_id" (UUID from leads_find), "template" (one of: cold_outreach, follow_up, partnership, custom), "tone" (one of: professional, casual, friendly, direct). Optional: "campaign_type" (e.g. "promotion", "partnership"), "custom_prompt" (extra instructions). → next step: call messages_send with the returned message_id.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -170,7 +170,7 @@ const TOOLS = [
   },
   {
     name: 'messages_send',
-    description: 'Send an approved outreach message via platform automation (e.g. Instagram DM).',
+    description: 'Send an approved outreach message via browser automation. Supports Instagram DM, Twitter DM, and LinkedIn messaging. Requires platform credentials to be saved first via credentials_save. Pass "message_id" (UUID from messages_generate). Optional: "scheduled_at" (ISO 8601 datetime to schedule the send — omit to send immediately). Returns send status, platform, and recipient username. NOTE: platform credentials (session cookies) must be saved before sending via credentials_save.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -182,7 +182,7 @@ const TOOLS = [
   },
   {
     name: 'credentials_save',
-    description: 'Store encrypted platform session credentials. Required before sending messages.',
+    description: 'Store encrypted platform session credentials for automated DM sending. These are required before using messages_send. Credentials are encrypted at rest and scoped to your API key. Required: "platform" (instagram, twitter, or linkedin), "value" (the session cookie or token). For Instagram: copy the "sessionid" cookie from browser DevTools while logged in. For Twitter: copy the "auth_token" cookie. For LinkedIn: copy the "li_at" cookie.',
     inputSchema: {
       type: 'object',
       properties: {
