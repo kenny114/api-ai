@@ -1,0 +1,400 @@
+# LeadAPI
+
+LeadAPI is a REST API and MCP server for automated lead generation and outreach. It scrapes Google Maps for local business leads, enriches them with OSINT data (emails, employees, tech stack), analyzes social profiles (Instagram, Twitter, LinkedIn), generates AI-powered outreach messages, and automates DM delivery via browser automation.
+
+## Authentication
+
+All REST endpoints require an `x-api-key` header:
+
+```
+x-api-key: sk_live_YOUR_KEY
+```
+
+Get a key from the dashboard at /dashboard. Keys are 64-character hex strings prefixed with `sk_live_`.
+
+MCP connections use Bearer token auth — pass your API key as the Bearer token in the Authorization header.
+
+## Base URL
+
+```
+https://your-deployed-domain.vercel.app
+```
+
+---
+
+## Endpoints
+
+### POST /api/v1/leads/find
+
+Scrape Google Maps for local businesses matching a query and area. Results are saved to your leads database and returned.
+
+**Required:**
+- `area` (string) — search query + location, e.g. `"coffee shops Austin TX"` or `"dentists London"`
+
+**Optional:**
+- `limit` (number, 1–50, default 20) — max results to return
+- `filters.no_website` (boolean) — only return businesses with no website
+
+**Example request:**
+```json
+{
+  "area": "pizza restaurants New York",
+  "limit": 10
+}
+```
+
+**Example response:**
+```json
+{
+  "leads": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Joe's Pizza",
+      "address": "123 Main St, New York, NY",
+      "phone": "+1-212-555-0100",
+      "website": "https://joespizza.com",
+      "rating": 4.7,
+      "platform": "google_maps"
+    }
+  ],
+  "count": 10
+}
+```
+
+→ next step: call `/api/v1/leads/intelligence` with the lead `id` for full enrichment.
+
+---
+
+### POST /api/v1/leads/intelligence
+
+Full intelligence pipeline: OSINT + social profile analysis + website analysis + AI-generated insights in a single call. Most comprehensive enrichment option.
+
+**Required:**
+- `lead_id` (string) — UUID from leads/find
+
+**Optional:**
+- `domain` (string) — override domain for OSINT (defaults to lead's website)
+- `company_name` (string) — override company name
+- `social_urls` (array of strings) — social profile URLs to analyze
+- `website_url` (string) — override website URL
+
+**Example request:**
+```json
+{
+  "lead_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
+**Example response:**
+```json
+{
+  "lead_id": "a1b2c3d4-...",
+  "osint": {
+    "emails": ["owner@joespizza.com"],
+    "employees": ["Joe Smith"],
+    "tech_stack": ["Squarespace", "Google Analytics"]
+  },
+  "social": {
+    "instagram": { "followers": 1240, "posts": 87, "engagement_rate": 0.032 }
+  },
+  "website": {
+    "emails": ["contact@joespizza.com"],
+    "phones": ["+1-212-555-0100"],
+    "has_online_ordering": true
+  },
+  "ai_insights": {
+    "pain_points": ["No loyalty program", "Limited online presence"],
+    "opportunities": ["Offer social media management", "Online ordering integration"],
+    "best_channel": "instagram"
+  }
+}
+```
+
+→ next step: call `/api/v1/messages/generate` with the lead `id`.
+
+---
+
+### POST /api/v1/leads/osint-enrich
+
+Standalone OSINT enrichment using theHarvester. Finds emails, subdomains, employees, and tech stack for a domain.
+
+**Required:**
+- `lead_id` (string) — UUID from leads/find
+
+**Optional:**
+- `domain` (string) — domain override
+- `company_name` (string) — company name override
+
+**Example request:**
+```json
+{
+  "lead_id": "a1b2c3d4-...",
+  "domain": "joespizza.com"
+}
+```
+
+**Example response:**
+```json
+{
+  "emails": ["joe@joespizza.com", "info@joespizza.com"],
+  "subdomains": ["menu.joespizza.com"],
+  "employees": ["Joe Smith - Owner"],
+  "tech_stack": ["Squarespace", "Mailchimp"]
+}
+```
+
+---
+
+### POST /api/v1/leads/social-analyze
+
+Analyze a lead's social media profile — followers, post frequency, engagement rate, and suggested outreach action.
+
+**Required:**
+- `lead_id` (string) — UUID from leads/find
+
+**Optional:**
+- `social_urls` (array of strings) — social URLs to analyze
+- `platform` (string: `"instagram"` | `"twitter"` | `"linkedin"`)
+
+**Example request:**
+```json
+{
+  "lead_id": "a1b2c3d4-...",
+  "platform": "instagram"
+}
+```
+
+**Example response:**
+```json
+{
+  "platform": "instagram",
+  "username": "joespizzanyc",
+  "followers": 1240,
+  "posts": 87,
+  "engagement_rate": 0.032,
+  "last_post_days_ago": 3,
+  "activity_level": "active",
+  "suggested_action": "DM with personalized offer"
+}
+```
+
+---
+
+### POST /api/v1/leads/website-analyze
+
+Extract contact info, social links, ordering pages, and best outreach channel from a lead's website.
+
+**Required:**
+- `lead_id` (string)
+
+**Optional:**
+- `url` (string) — override website URL
+
+**Example request:**
+```json
+{
+  "lead_id": "a1b2c3d4-..."
+}
+```
+
+**Example response:**
+```json
+{
+  "emails": ["contact@joespizza.com"],
+  "phones": ["+1-212-555-0100"],
+  "social_links": {
+    "instagram": "https://instagram.com/joespizzanyc",
+    "facebook": "https://facebook.com/joespizza"
+  },
+  "has_online_ordering": true,
+  "best_outreach_channel": "instagram"
+}
+```
+
+---
+
+### POST /api/v1/messages/generate
+
+Generate a personalised AI outreach message for a lead using GPT-4o-mini.
+
+**Required:**
+- `lead_id` (string)
+- `template` (string: `"cold_outreach"` | `"follow_up"` | `"partnership"` | `"custom"`)
+- `tone` (string: `"professional"` | `"casual"` | `"friendly"` | `"direct"`)
+
+**Optional:**
+- `campaign_type` (string) — e.g. `"promotion"`, `"partnership"`
+- `custom_prompt` (string) — extra instructions for the AI
+
+**Example request:**
+```json
+{
+  "lead_id": "a1b2c3d4-...",
+  "template": "cold_outreach",
+  "tone": "friendly"
+}
+```
+
+**Example response:**
+```json
+{
+  "message_id": "e5f6g7h8-...",
+  "message_text": "Hey Joe! Love what you're doing with Joe's Pizza — the engagement on your Instagram is great. We help local restaurants grow their online presence and think you'd be a perfect fit. Mind if I share some details?",
+  "status": "draft",
+  "platform": "instagram"
+}
+```
+
+→ next step: call `/api/v1/messages/send` with the `message_id`.
+
+---
+
+### POST /api/v1/messages/send
+
+Send an approved outreach message via browser automation. Supports Instagram DM, Twitter DM, and LinkedIn messaging. Requires platform credentials saved via `/api/v1/credentials`.
+
+**Required:**
+- `message_id` (string) — UUID from messages/generate
+
+**Optional:**
+- `scheduled_at` (string) — ISO 8601 datetime to schedule send; omit to send immediately
+
+**Example request:**
+```json
+{
+  "message_id": "e5f6g7h8-..."
+}
+```
+
+**Example response:**
+```json
+{
+  "log_id": "i9j0k1l2-...",
+  "status": "sent",
+  "sent_at": "2026-04-01T14:23:01Z",
+  "platform": "instagram",
+  "username": "joespizzanyc"
+}
+```
+
+---
+
+### POST /api/v1/credentials
+
+Store encrypted platform session credentials. Required before sending messages. Credentials are encrypted at rest and scoped to your API key.
+
+**Required:**
+- `platform` (string: `"instagram"` | `"twitter"` | `"linkedin"`)
+- `value` (string) — session cookie or auth token
+
+Instagram: copy `sessionid` cookie value from browser DevTools while logged in.
+Twitter: copy `auth_token` cookie value.
+LinkedIn: copy `li_at` cookie value.
+
+**Example request:**
+```json
+{
+  "platform": "instagram",
+  "value": "YOUR_SESSION_COOKIE"
+}
+```
+
+**Example response:**
+```json
+{
+  "success": true,
+  "platform": "instagram"
+}
+```
+
+---
+
+## MCP Server
+
+LeadAPI exposes all 8 tools via a remote MCP server (HTTP+SSE transport).
+
+### Connect via Claude.ai
+
+Settings → Integrations → Add MCP Server
+URL: `https://your-deployed-domain.vercel.app/api/mcp`
+Auth: Bearer token (your LeadAPI API key)
+
+### Connect via Claude Desktop / Cursor / Windsurf
+
+Add to your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "leadapi": {
+      "command": "node",
+      "args": ["/path/to/leadapi/mcp-server.js"],
+      "env": {
+        "LEADAPI_KEY": "sk_live_YOUR_KEY",
+        "LEADAPI_BASE": "https://your-deployed-domain.vercel.app"
+      }
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+- `leads_find` — scrape Google Maps for leads
+- `leads_intelligence` — full enrichment pipeline (OSINT + social + website + AI)
+- `leads_osint_enrich` — OSINT only (emails, employees, tech stack)
+- `leads_social_analyze` — social profile analysis
+- `leads_website_analyze` — website contact/link extraction
+- `messages_generate` — AI message generation
+- `messages_send` — automated DM sending
+- `credentials_save` — store platform session credentials
+
+---
+
+## Common Workflows
+
+### Workflow 1: Full outreach pipeline
+
+```
+1. POST /api/v1/leads/find        { "area": "gyms Chicago" }
+2. POST /api/v1/leads/intelligence { "lead_id": "<id>" }
+3. POST /api/v1/messages/generate  { "lead_id": "<id>", "template": "cold_outreach", "tone": "friendly" }
+4. POST /api/v1/messages/send      { "message_id": "<id>" }
+```
+
+### Workflow 2: OSINT-only enrichment
+
+```
+1. POST /api/v1/leads/find         { "area": "law firms Boston" }
+2. POST /api/v1/leads/osint-enrich { "lead_id": "<id>", "domain": "example.com" }
+```
+
+### Workflow 3: Social analysis then outreach
+
+```
+1. POST /api/v1/leads/find          { "area": "hair salons Miami" }
+2. POST /api/v1/leads/social-analyze { "lead_id": "<id>", "platform": "instagram" }
+3. POST /api/v1/messages/generate   { "lead_id": "<id>", "template": "cold_outreach", "tone": "casual" }
+4. POST /api/v1/messages/send       { "message_id": "<id>" }
+```
+
+---
+
+## Error Codes
+
+| Code | HTTP Status | Meaning |
+|------|-------------|---------|
+| `MISSING_API_KEY` | 401 | No `x-api-key` header provided |
+| `INVALID_API_KEY` | 401 | Key not found or invalid |
+| `LIMIT_EXCEEDED` | 429 | Request quota exhausted for this key |
+| `VALIDATION_ERROR` | 400 | Request body failed schema validation |
+| `AUTH_ERROR` | 401 | Platform credential missing or invalid |
+| `INTERNAL_ERROR` | 500 | Unexpected server error |
+
+---
+
+## Machine-Readable Resources
+
+- OpenAPI 3.1 spec: `/openapi.json`
+- Agent plugin manifest: `/.well-known/ai-plugin.json`
+- Interactive docs: `/docs`
