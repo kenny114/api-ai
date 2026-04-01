@@ -1,0 +1,19 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "LeadAPI",
+  "name_for_model": "leadapi",
+  "description_for_human": "Find leads, enrich with OSINT, generate AI messages, and send DMs on Instagram/Twitter/LinkedIn.",
+  "description_for_model": "LeadAPI provides tools to scrape Google Maps for local business leads, enrich them with OSINT data (emails, employees, subdomains, tech stack), analyze social profiles (Instagram, Twitter, LinkedIn), generate AI-powered personalized outreach messages using GPT-4o-mini, and automate DM delivery via browser automation. Authenticate all requests with x-api-key header using a key prefixed sk_live_. Full workflow: leads/find → leads/intelligence → messages/generate → messages/send. Credentials must be saved via /api/v1/credentials before sending messages.",
+  "auth": {
+    "type": "user_http",
+    "authorization_type": "bearer"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://your-deployed-domain.vercel.app/openapi.json"
+  },
+  "mcp_endpoint": "https://your-deployed-domain.vercel.app/api/mcp",
+  "logo_url": "https://your-deployed-domain.vercel.app/logo.png",
+  "contact_email": "",
+  "legal_info_url": ""
+}
