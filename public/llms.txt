@@ -46,18 +46,19 @@ Scrape Google Maps for local businesses matching a query and area. Results are s
 **Example response:**
 ```json
 {
+  "status": "success",
+  "leads_found": 10,
   "leads": [
     {
       "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "name": "Joe's Pizza",
-      "address": "123 Main St, New York, NY",
-      "phone": "+1-212-555-0100",
-      "website": "https://joespizza.com",
-      "rating": 4.7,
-      "platform": "google_maps"
+      "username": "joes_pizza",
+      "profile_url": "https://joespizza.com",
+      "platform": "google_maps",
+      "metadata": { "email": null, "area": "pizza restaurants New York", "source": "google_maps" },
+      "created_at": "2026-04-01T14:00:00Z"
     }
-  ],
-  "count": 10
+  ]
 }
 ```
 
@@ -88,25 +89,29 @@ Full intelligence pipeline: OSINT + social profile analysis + website analysis +
 **Example response:**
 ```json
 {
-  "lead_id": "a1b2c3d4-...",
-  "osint": {
-    "emails": ["owner@joespizza.com"],
-    "employees": ["Joe Smith"],
-    "tech_stack": ["Squarespace", "Google Analytics"]
-  },
-  "social": {
-    "instagram": { "followers": 1240, "posts": 87, "engagement_rate": 0.032 }
-  },
-  "website": {
-    "emails": ["contact@joespizza.com"],
+  "lead_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "contact": {
+    "emails": ["owner@joespizza.com", "contact@joespizza.com"],
     "phones": ["+1-212-555-0100"],
-    "has_online_ordering": true
+    "decision_makers": ["Joe Smith"]
   },
-  "ai_insights": {
+  "website_analysis": {
+    "has_menu": true,
+    "has_online_ordering": false
+  },
+  "social_analysis": {
+    "instagram": { "followers": 1240, "posts": 87, "activity_level": "medium", "suggested_action": "send_dm" }
+  },
+  "insights": {
     "pain_points": ["No loyalty program", "Limited online presence"],
-    "opportunities": ["Offer social media management", "Online ordering integration"],
-    "best_channel": "instagram"
-  }
+    "opportunity": "Offer social media management to grow their Instagram audience"
+  },
+  "suggested_outreach": {
+    "channel": "instagram_dm",
+    "message_angle": "personalized outreach based on business intelligence",
+    "next_step": "send_dm"
+  },
+  "updated_at": "2026-04-01T14:05:00Z"
 }
 ```
 
@@ -238,10 +243,9 @@ Generate a personalised AI outreach message for a lead using GPT-4o-mini.
 **Example response:**
 ```json
 {
-  "message_id": "e5f6g7h8-...",
+  "message_id": "e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0",
   "message_text": "Hey Joe! Love what you're doing with Joe's Pizza — the engagement on your Instagram is great. We help local restaurants grow their online presence and think you'd be a perfect fit. Mind if I share some details?",
-  "status": "draft",
-  "platform": "instagram"
+  "status": "draft"
 }
 ```
 
@@ -262,7 +266,7 @@ Send an approved outreach message via browser automation. Supports Instagram DM,
 **Example request:**
 ```json
 {
-  "message_id": "e5f6g7h8-..."
+  "message_id": "e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0"
 }
 ```
 
@@ -327,11 +331,9 @@ Add to your MCP config:
 {
   "mcpServers": {
     "leadapi": {
-      "command": "node",
-      "args": ["/path/to/leadapi/mcp-server.js"],
-      "env": {
-        "LEADAPI_KEY": "sk_live_YOUR_KEY",
-        "LEADAPI_BASE": "https://your-deployed-domain.vercel.app"
+      "url": "https://your-deployed-domain.vercel.app/api/mcp",
+      "headers": {
+        "Authorization": "Bearer sk_live_YOUR_KEY"
       }
     }
   }
@@ -389,6 +391,9 @@ Add to your MCP config:
 | `LIMIT_EXCEEDED` | 429 | Request quota exhausted for this key |
 | `VALIDATION_ERROR` | 400 | Request body failed schema validation |
 | `AUTH_ERROR` | 401 | Platform credential missing or invalid |
+| `SCRAPING_ERROR` | 500 | Google Maps scraping failed |
+| `LEAD_NOT_FOUND` | 404 | Lead ID not found or not owned by this key |
+| `MESSAGE_NOT_FOUND` | 404 | Message ID not found or not owned by this key |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
 
 ---
