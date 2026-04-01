@@ -1,0 +1,356 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LeadAPI",
+    "version": "1.0.0",
+    "description": "REST API for automated lead generation, OSINT enrichment, AI message generation, and social media DM automation.",
+    "contact": {}
+  },
+  "externalDocs": {
+    "description": "LLM-readable reference",
+    "url": "/llms.txt"
+  },
+  "servers": [
+    { "url": "https://your-deployed-domain.vercel.app", "description": "Production" },
+    { "url": "http://localhost:3000", "description": "Local dev" }
+  ],
+  "security": [{ "ApiKeyAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "code": { "type": "string", "enum": ["MISSING_API_KEY", "INVALID_API_KEY", "LIMIT_EXCEEDED", "VALIDATION_ERROR", "AUTH_ERROR", "SCRAPING_ERROR", "LEAD_NOT_FOUND", "MESSAGE_NOT_FOUND", "INTERNAL_ERROR"] }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/leads/find": {
+      "post": {
+        "summary": "Find leads from Google Maps",
+        "description": "Scrape Google Maps for local businesses matching a search query. Results are saved to your leads database.",
+        "operationId": "leadsFind",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["area"],
+                "properties": {
+                  "area": { "type": "string", "description": "Search query + location e.g. 'coffee shops Austin TX'", "example": "pizza restaurants New York" },
+                  "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+                  "filters": {
+                    "type": "object",
+                    "properties": {
+                      "no_website": { "type": "boolean", "description": "Only return businesses with no website" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Leads found and saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "leads_found": { "type": "integer" },
+                    "leads": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string", "format": "uuid" },
+                          "name": { "type": "string" },
+                          "username": { "type": "string" },
+                          "profile_url": { "type": "string" },
+                          "platform": { "type": "string" },
+                          "metadata": { "type": "object" },
+                          "created_at": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": { "description": "Rate limit exceeded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/leads/intelligence": {
+      "post": {
+        "summary": "Full intelligence pipeline",
+        "description": "OSINT + social profile analysis + website analysis + AI insights in a single call.",
+        "operationId": "leadsIntelligence",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["lead_id"],
+                "properties": {
+                  "lead_id": { "type": "string", "format": "uuid" },
+                  "domain": { "type": "string" },
+                  "company_name": { "type": "string" },
+                  "social_urls": { "type": "array", "items": { "type": "string" } },
+                  "website_url": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Full intelligence report" },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Lead not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": { "description": "Rate limit exceeded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/leads/osint-enrich": {
+      "post": {
+        "summary": "OSINT enrichment",
+        "description": "Enrich a lead with emails, subdomains, employees, and tech stack using theHarvester.",
+        "operationId": "leadsOsintEnrich",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["lead_id"],
+                "properties": {
+                  "lead_id": { "type": "string", "format": "uuid" },
+                  "domain": { "type": "string" },
+                  "company_name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "OSINT data" },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/leads/social-analyze": {
+      "post": {
+        "summary": "Social profile analysis",
+        "description": "Analyze a lead's social profiles for followers, engagement, and activity.",
+        "operationId": "leadsSocialAnalyze",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["lead_id"],
+                "properties": {
+                  "lead_id": { "type": "string", "format": "uuid" },
+                  "social_urls": { "type": "array", "items": { "type": "string" } },
+                  "platform": { "type": "string", "enum": ["instagram", "twitter", "linkedin"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Social profile data" },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/leads/website-analyze": {
+      "post": {
+        "summary": "Website analysis",
+        "description": "Extract emails, phones, social links, and best outreach channel from a lead's website.",
+        "operationId": "leadsWebsiteAnalyze",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["lead_id"],
+                "properties": {
+                  "lead_id": { "type": "string", "format": "uuid" },
+                  "url": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Website intelligence" },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/messages/generate": {
+      "post": {
+        "summary": "Generate outreach message",
+        "description": "Generate a personalised AI outreach message for a lead using GPT-4o-mini.",
+        "operationId": "messagesGenerate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["lead_id"],
+                "properties": {
+                  "lead_id": { "type": "string", "format": "uuid" },
+                  "template": { "type": "string", "enum": ["cold_outreach", "follow_up", "partnership", "custom"], "default": "cold_outreach" },
+                  "tone": { "type": "string", "enum": ["professional", "casual", "friendly", "direct"], "default": "friendly" },
+                  "campaign_type": { "type": "string" },
+                  "custom_prompt": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generated message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message_id": { "type": "string", "format": "uuid" },
+                    "message_text": { "type": "string" },
+                    "status": { "type": "string", "enum": ["draft"] }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Lead not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/messages/send": {
+      "post": {
+        "summary": "Send outreach message",
+        "description": "Send an approved message via browser automation on Instagram, Twitter, or LinkedIn. Requires saved platform credentials.",
+        "operationId": "messagesSend",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message_id"],
+                "properties": {
+                  "message_id": { "type": "string", "format": "uuid" },
+                  "scheduled_at": { "type": "string", "format": "date-time", "description": "ISO 8601 datetime; omit to send immediately" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "log_id": { "type": "string", "format": "uuid" },
+                    "status": { "type": "string", "enum": ["sent", "pending"] },
+                    "sent_at": { "type": "string", "format": "date-time" },
+                    "platform": { "type": "string" },
+                    "username": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Message not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/credentials": {
+      "post": {
+        "summary": "Save platform credentials",
+        "description": "Store encrypted platform session credentials. Required before sending messages.",
+        "operationId": "credentialsSave",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["platform", "value"],
+                "properties": {
+                  "platform": { "type": "string", "enum": ["instagram", "twitter", "linkedin"] },
+                  "value": { "type": "string", "description": "Session cookie or auth token value" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Credentials saved" },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "get": {
+        "summary": "List saved credentials",
+        "description": "List which platforms have saved credentials for this API key.",
+        "operationId": "credentialsList",
+        "responses": {
+          "200": { "description": "Platform credential status" },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "summary": "Delete credentials",
+        "description": "Remove saved credentials for a platform.",
+        "operationId": "credentialsDelete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["platform"],
+                "properties": {
+                  "platform": { "type": "string", "enum": ["instagram", "twitter", "linkedin"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Credentials deleted" },
+          "401": { "description": "Invalid or missing API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}
